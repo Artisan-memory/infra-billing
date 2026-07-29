@@ -18,7 +18,6 @@ import { BuildInfo } from '@/components/BuildInfo';
 import { DocsLink } from '@/components/DocsLink';
 import { GithubStars } from '@/components/GithubStars';
 import { LanguageSwitcher } from '@/components/LanguageSwitcher';
-import { RwpPromo } from '@/components/RwpPromo';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
@@ -166,7 +165,6 @@ export function AppLayout() {
         <header className="sticky top-0 z-20 flex h-14 shrink-0 items-center gap-1.5 border-b bg-background/85 px-3 backdrop-blur sm:px-4">
           <SidebarTrigger className="-ml-1" />
           <div className="flex-1" />
-          <RwpPromo />
           <div className="hidden sm:block">
             <GithubStars />
           </div>

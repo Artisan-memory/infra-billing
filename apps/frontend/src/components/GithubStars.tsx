@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { Odometer } from '@/components/remocn/odometer';
 import { Button } from '@/components/ui/button';
 
-const REPO = 'mishkatik/infra-billing';
+const REPO = 'Artisan-memory/infra-billing';
 const REPO_URL = `https://github.com/${REPO}`;
 
 export function GithubStars() {
