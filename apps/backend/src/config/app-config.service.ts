@@ -6,9 +6,10 @@ import { envSchema, type Env } from './env.schema';
 // The APP_VERSION build arg is only filled by a tagged CI build or `make docker-build`; a plain
 // `docker compose up --build` leaves it at "dev". Fall back to the version of the package that was
 // actually built, so the panel shows a real version instead of a DEV badge.
+// This file compiles to dist/config/, so the package root is two levels up.
 const PACKAGE_VERSION = ((): string => {
   try {
-    const raw = readFileSync(join(__dirname, '..', 'package.json'), 'utf8');
+    const raw = readFileSync(join(__dirname, '..', '..', 'package.json'), 'utf8');
     return (JSON.parse(raw) as { version?: string }).version || 'dev';
   } catch {
     return 'dev';
