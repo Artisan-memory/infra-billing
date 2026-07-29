@@ -37,15 +37,6 @@
   шифруются AES-256-GCM. В списке и карточке провайдера секретов нет — только признак «задан»;
   показать их в открытом виде можно лишь по «глазику» в форме, из сессии владельца.
 
-## RWP Shop
-
-[<img src="apps/frontend/src/assets/rwp-logo.svg" width="56" align="left" alt="RWP Shop">](https://rwp.rw)
-
-[**RWP Shop**](https://rwp.rw) — лучший многофункциональный бот для VPN-коммерции на Remnawave:
-личный кабинет клиента, платежи, подписки, поддержка, партнёрская программа и аналитика. Работает
-в браузере и как Mini App в Telegram. Есть интеграция с Infra Billing.
-**Скидка 15%** по промокоду **`MISH`**.
-
 ## Стек
 
 - **Backend:** NestJS 11 (Node 22) · Prisma 7 · PostgreSQL 17 · zod (`nestjs-zod`) · axios · grammY
