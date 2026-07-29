@@ -57,17 +57,15 @@
 
 ## Установка (production)
 
-**Требования:** Docker + Docker Compose plugin; домен и reverse-proxy с TLS (см. ниже — без HTTPS
-вход не работает, т.к. сессионная кука `Secure`). Образ берётся из GHCR
-(`ghcr.io/mishkatik/infra-billing`).
+**Требования:** Docker + Docker Compose plugin, git; домен и reverse-proxy с TLS (см. ниже — без
+HTTPS вход не работает, т.к. сессионная кука `Secure`). Образ собирается из этого репозитория.
 
 ```bash
-# 1. Каталог
-mkdir -p /opt/infra-billing && cd /opt/infra-billing
+# 1. Каталог с исходниками
+git clone https://github.com/Artisan-memory/infra-billing.git /opt/infra-billing && cd /opt/infra-billing
 
-# 2. Скачать prod-compose и пример конфига в .env
-curl -fsSL -o docker-compose.yml https://raw.githubusercontent.com/mishkatik/infra-billing/main/docker-compose-prod.yml
-curl -fsSL -o .env https://raw.githubusercontent.com/mishkatik/infra-billing/main/.env.example
+# 2. Пример конфига в .env
+cp .env.example .env
 
 # 3. Сгенерировать ключ шифрования (GNU sed; разделитель # — т.к. base64 содержит /)
 sed -i "s#^ENCRYPTION_KEY=.*#ENCRYPTION_KEY=$(openssl rand -base64 32)#" .env
@@ -75,25 +73,26 @@ sed -i "s#^ENCRYPTION_KEY=.*#ENCRYPTION_KEY=$(openssl rand -base64 32)#" .env
 # 4. Пароль БД — один и тот же в POSTGRES_PASSWORD и в DATABASE_URL
 pw=$(openssl rand -hex 24) && sed -i "s/^POSTGRES_PASSWORD=.*/POSTGRES_PASSWORD=$pw/" .env && sed -i "s|^\(DATABASE_URL=\"postgresql://infra:\)[^\@]*\(@.*\)|\1$pw\2|" .env
 
-# 5. Запуск (миграции применяются на старте)
-docker compose up -d && docker compose logs -f
+# 5. Сборка и запуск (миграции применяются на старте)
+docker compose up -d --build && docker compose logs -f
 ```
 
 При первом открытии панель покажет экран регистрации — создайте аккаунт владельца (логин + пароль;
 passkey можно добавить позже).
 
-Панель поднимется на `127.0.0.1:8080`. Дальше — reverse-proxy с TLS на ваш домен.
+Панель поднимется на `127.0.0.1:18512` (порт меняется через `APP_HOST_PORT` в `.env`). Дальше —
+reverse-proxy с TLS на ваш домен.
 
 ### Reverse proxy + TLS (обязательно)
 
-Контейнер слушает только `127.0.0.1:8080` — наружу не торчит. Поставьте перед ним reverse-proxy,
+Контейнер слушает только `127.0.0.1:18512` — наружу не торчит. Поставьте перед ним reverse-proxy,
 который терминирует TLS. **Без HTTPS логин не сработает** (сессионная кука помечена `Secure`).
 
 Пример [Caddy](https://caddyserver.com) (сам выпустит сертификат):
 
 ```caddy
 billing.example.com {
-    reverse_proxy 127.0.0.1:8080
+    reverse_proxy 127.0.0.1:18512
 }
 ```
 
@@ -106,7 +105,7 @@ Caddy по умолчанию не ограничивает ожидание о�
 Обновить и перезапустить:
 
 ```bash
-cd /opt/infra-billing && docker compose pull && docker compose down && docker compose up -d && docker compose logs -f
+cd /opt/infra-billing && git pull && docker compose down && docker compose up -d --build && docker compose logs -f
 ```
 
 Почистить неиспользуемые образы:
@@ -154,7 +153,8 @@ docker compose exec infra-billing cli reset-admin --yes
 
 | Переменная | Назначение |
 |------------|-----------|
-| `PORT` | Порт бэкенда (он же отдаёт SPA), default 8080 |
+| `PORT` | Порт бэкенда внутри контейнера (он же отдаёт SPA), default 8080 |
+| `APP_HOST_PORT` | Порт публикации панели на `127.0.0.1` — в него смотрит reverse-proxy (default 18512) |
 | `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` | Параметры контейнера Postgres |
 | `POSTGRES_HOST_PORT` | Порт публикации Postgres на `127.0.0.1` (default 5432) |
 | `DATABASE_URL` | Строка подключения Prisma (хост = `infra-billing-db` в docker, `127.0.0.1` локально) |
