@@ -3,13 +3,22 @@ import { useState } from 'react';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 
-/** Password field with a visibility toggle. */
+/**
+ * Password field with a visibility toggle. Defaults to `autoComplete="new-password"`: most of these
+ * fields hold a token or secret, and browsers otherwise offer the password saved for this site
+ * (`off` alone is ignored by Chrome). The login field passes `current-password` to opt back in.
+ */
 export function PasswordInput({ className, ...props }: React.ComponentProps<'input'>) {
   const [visible, setVisible] = useState(false);
 
   return (
     <div className="relative">
-      <Input type={visible ? 'text' : 'password'} className={cn('pr-9', className)} {...props} />
+      <Input
+        type={visible ? 'text' : 'password'}
+        className={cn('pr-9', className)}
+        autoComplete="new-password"
+        {...props}
+      />
       <button
         type="button"
         tabIndex={-1}

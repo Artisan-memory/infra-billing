@@ -117,7 +117,7 @@ export function SecretInput({
           )}
           value={value}
           disabled={disabled}
-          autoComplete="off"
+          autoComplete="new-password"
           onChange={(e) => onChange?.(e.target.value)}
         />
         {eye}
@@ -135,7 +135,7 @@ export function SecretInput({
         readOnly={showMask}
         disabled={disabled}
         placeholder={showMask ? undefined : placeholder}
-        autoComplete="off"
+        autoComplete="new-password"
         onChange={showMask ? undefined : (e) => onChange?.(e.target.value)}
         {...rest}
       />

@@ -246,6 +246,8 @@ function SignInForm({
             </Label>
             <PasswordInput
               id="login-password"
+              // The one field where the browser's saved password is wanted.
+              autoComplete="current-password"
               aria-invalid={errors.password ? true : undefined}
               {...register('password')}
             />
