@@ -81,6 +81,15 @@ export class PaymentsRepository {
     return this.prisma.payment.create({ data });
   }
 
+  /** `externalId`s a provider already has — lets an import tell a create from a refresh. */
+  async listExternalIds(providerUuid: string): Promise<string[]> {
+    const rows = await this.prisma.payment.findMany({
+      where: { providerUuid, externalId: { not: null } },
+      select: { externalId: true },
+    });
+    return rows.map((r) => r.externalId).filter((id): id is string => id !== null);
+  }
+
   /** Idempotent import upsert by (providerUuid, externalId); manual payments are never touched. */
   upsertExternal(providerUuid: string, externalId: string, data: ExternalPaymentData) {
     return this.prisma.payment.upsert({

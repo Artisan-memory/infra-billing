@@ -25,6 +25,7 @@ export const API = {
   SETTINGS: 'settings',
   NOTIFICATIONS: 'notifications',
   TOKENS: 'tokens',
+  MIGRATION: 'migration',
 } as const;
 
 /** Method sub-paths within a controller (NestJS-style; `:uuid` for route params). */
@@ -60,6 +61,9 @@ export const API_SUB = {
   RATES_BACKFILL: 'backfill',
   NOTIFICATIONS_CHECK: 'check',
   NOTIFICATIONS_TEST: 'test',
+  // One-off Remnawave import: dry run first, then the actual write.
+  MIGRATION_REMNAWAVE: 'remnawave',
+  MIGRATION_REMNAWAVE_PREVIEW: 'remnawave/preview',
 } as const;
 
 const path = (controller: string, sub?: string): string =>
@@ -130,5 +134,9 @@ export const API_PATH = {
   TOKENS: {
     ROOT: path(API.TOKENS),
     BY_ID: (uuid: string) => pathId(API.TOKENS, API_SUB.BY_ID, uuid),
+  },
+  MIGRATION: {
+    REMNAWAVE: path(API.MIGRATION, API_SUB.MIGRATION_REMNAWAVE),
+    REMNAWAVE_PREVIEW: path(API.MIGRATION, API_SUB.MIGRATION_REMNAWAVE_PREVIEW),
   },
 } as const;

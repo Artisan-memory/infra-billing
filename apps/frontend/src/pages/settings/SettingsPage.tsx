@@ -2,6 +2,7 @@ import { useTranslation } from 'react-i18next';
 import { PageHeader } from '@/components/PageHeader';
 import { GeneralSettingsCard } from './GeneralSettingsCard';
 import { RatesCard } from './RatesCard';
+import { RemnawaveMigrationCard } from './RemnawaveMigrationCard';
 import { TelegramSettingsCard } from './TelegramSettingsCard';
 
 export function SettingsPage() {
@@ -16,6 +17,8 @@ export function SettingsPage() {
       </div>
 
       <RatesCard />
+
+      <RemnawaveMigrationCard />
     </div>
   );
 }

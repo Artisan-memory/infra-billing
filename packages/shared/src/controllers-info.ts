@@ -11,6 +11,7 @@ export const CONTROLLERS_INFO = {
   RATES: { TAG: 'Exchange Rates', DESCRIPTION: 'Currency rates to the base currency' },
   SETTINGS: { TAG: 'Settings', DESCRIPTION: 'Panel settings' },
   NOTIFICATIONS: { TAG: 'Notifications', DESCRIPTION: 'Outgoing Telegram notifications' },
+  MIGRATION: { TAG: 'Migration', DESCRIPTION: 'One-off import from a Remnawave panel' },
   HEALTH: { TAG: 'Health', DESCRIPTION: 'Liveness check' },
   BUILD_INFO: { TAG: 'Build Info', DESCRIPTION: 'Build metadata' },
 } as const;
