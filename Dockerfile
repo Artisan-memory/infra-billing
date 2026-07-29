@@ -1,12 +1,16 @@
+# syntax=docker/dockerfile:1
 FROM node:22-alpine AS builder
 WORKDIR /app
 RUN apk add --no-cache openssl
+
+# playwright is a dev-only devDependency (docs screenshots); skip its ~1.4 GB browser download.
+ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 
 COPY package.json package-lock.json tsconfig.base.json ./
 COPY packages/shared/package.json packages/shared/
 COPY apps/backend/package.json apps/backend/
 COPY apps/frontend/package.json apps/frontend/
-RUN npm ci
+RUN --mount=type=cache,target=/root/.npm npm ci --no-audit --no-fund
 
 COPY . .
 RUN npm run prisma:generate -w @infra/backend
@@ -24,7 +28,8 @@ COPY apps/frontend/package.json apps/frontend/
 # Runtime runs only the backend, so install only its production deps. Scoping to the backend
 # workspace skips the frontend's build-only UI libraries (Vite bundles them into
 # apps/frontend/dist; nothing is required from node_modules at runtime). The bulk of the image.
-RUN npm ci --omit=dev -w @infra/backend --include-workspace-root && npm cache clean --force
+RUN --mount=type=cache,target=/root/.npm \
+  npm ci --omit=dev --no-audit --no-fund -w @infra/backend --include-workspace-root
 
 COPY --from=builder /app/packages/shared/dist packages/shared/dist
 COPY --from=builder /app/apps/backend/dist apps/backend/dist
