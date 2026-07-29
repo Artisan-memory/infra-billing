@@ -1,7 +1,11 @@
-name: Build&Push Release Docker Image
+name: Build&Push Docker Image
 
+# Builds on GitHub's runners so a server never has to: `npm ci` plus the Vite build peak well past
+# what a small VPS has, and building there swaps the box to a halt.
 on:
   push:
+    branches:
+      - main
     tags:
       - '*'
   workflow_dispatch:
@@ -11,21 +15,10 @@ permissions:
   packages: write
 
 jobs:
-  send-tg-msg:
-    name: Send TG message
-    runs-on: ubuntu-latest
-    steps:
-      - name: Send Telegram message
-        uses: proDreams/actions-telegram-notifier@v3.0.0
-        with:
-          token: ${{ secrets.TELEGRAM_TOKEN }}
-          chat_id: ${{ secrets.TELEGRAM_CHAT_ID }}
-          status: info
-          notify_fields: 'repository,branch,commit,workflow'
-          title: 'Build started.'
-
   build-docker-image:
     runs-on: ubuntu-latest
+    outputs:
+      image: ${{ steps.meta.outputs.image }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -43,6 +36,8 @@ jobs:
       - name: Prepare build metadata
         id: meta
         run: |
+          # Image references must be lowercase; an owner name may not be.
+          echo "image=ghcr.io/$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
           echo "version=$(jq -r .version package.json)" >> "$GITHUB_OUTPUT"
           echo "build_time=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> "$GITHUB_OUTPUT"
 
@@ -56,9 +51,10 @@ jobs:
             APP_VERSION=${{ steps.meta.outputs.version }}
             BUILD_TIME=${{ steps.meta.outputs.build_time }}
             GIT_COMMIT=${{ github.sha }}
+          # `latest` follows main; a tag push additionally publishes that tag.
           tags: |
-            ghcr.io/${{ github.repository }}:latest
-            ghcr.io/${{ github.repository }}:${{ github.ref_name }}
+            ${{ steps.meta.outputs.image }}:latest
+            ${{ github.ref_type == 'tag' && format('{0}:{1}', steps.meta.outputs.image, github.ref_name) || '' }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -82,34 +78,5 @@ jobs:
           make_latest: true
           body: |
             Docker image:
-            - `ghcr.io/${{ github.repository }}:${{ github.ref_name }}`
-            - `ghcr.io/${{ github.repository }}:latest`
-
-  send-finish-tg-msg:
-    name: Send TG message
-    needs: [build-docker-image, create-release]
-    runs-on: ubuntu-latest
-    steps:
-      - name: Send Telegram message
-        uses: proDreams/actions-telegram-notifier@v3.0.0
-        with:
-          token: ${{ secrets.TELEGRAM_TOKEN }}
-          chat_id: ${{ secrets.TELEGRAM_CHAT_ID }}
-          status: ${{ job.status }}
-          notify_fields: 'repository,branch,commit'
-          title: 'Build finished.'
-
-  notify-on-error:
-    name: Notify on error
-    needs: [build-docker-image]
-    if: failure()
-    runs-on: ubuntu-latest
-    steps:
-      - name: Send error notification
-        uses: proDreams/actions-telegram-notifier@v3.0.0
-        with:
-          token: ${{ secrets.TELEGRAM_TOKEN }}
-          chat_id: ${{ secrets.TELEGRAM_CHAT_ID }}
-          status: failure
-          notify_fields: 'repository,branch,commit,workflow'
-          title: 'Build failed.'
+            - `${{ needs.build-docker-image.outputs.image }}:${{ github.ref_name }}`
+            - `${{ needs.build-docker-image.outputs.image }}:latest`

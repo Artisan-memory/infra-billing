@@ -48,15 +48,17 @@
 
 ## Установка (production)
 
-**Требования:** Docker + Docker Compose plugin, git; домен и reverse-proxy с TLS (см. ниже — без
-HTTPS вход не работает, т.к. сессионная кука `Secure`). Образ собирается из этого репозитория.
+**Требования:** Docker + Docker Compose plugin; домен и reverse-proxy с TLS (см. ниже — без HTTPS
+вход не работает, т.к. сессионная кука `Secure`). Образ берётся готовым из GHCR
+(`ghcr.io/artisan-memory/infra-billing`, собирается в GitHub Actions на каждый пуш в `main`).
 
 ```bash
-# 1. Каталог с исходниками
-git clone https://github.com/Artisan-memory/infra-billing.git /opt/infra-billing && cd /opt/infra-billing
+# 1. Каталог
+mkdir -p /opt/infra-billing && cd /opt/infra-billing
 
-# 2. Пример конфига в .env
-cp .env.example .env
+# 2. Скачать prod-compose и пример конфига в .env
+curl -fsSL -o docker-compose.yml https://raw.githubusercontent.com/Artisan-memory/infra-billing/main/docker-compose-prod.yml
+curl -fsSL -o .env https://raw.githubusercontent.com/Artisan-memory/infra-billing/main/.env.example
 
 # 3. Сгенерировать ключ шифрования (GNU sed; разделитель # — т.к. base64 содержит /)
 sed -i "s#^ENCRYPTION_KEY=.*#ENCRYPTION_KEY=$(openssl rand -base64 32)#" .env
@@ -64,9 +66,14 @@ sed -i "s#^ENCRYPTION_KEY=.*#ENCRYPTION_KEY=$(openssl rand -base64 32)#" .env
 # 4. Пароль БД — один и тот же в POSTGRES_PASSWORD и в DATABASE_URL
 pw=$(openssl rand -hex 24) && sed -i "s/^POSTGRES_PASSWORD=.*/POSTGRES_PASSWORD=$pw/" .env && sed -i "s|^\(DATABASE_URL=\"postgresql://infra:\)[^\@]*\(@.*\)|\1$pw\2|" .env
 
-# 5. Сборка и запуск (миграции применяются на старте)
-docker compose up -d --build && docker compose logs -f
+# 5. Запуск (миграции применяются на старте)
+docker compose up -d && docker compose logs -f
 ```
+
+Пакет в GHCR должен быть публичным — иначе перед `pull` нужен `docker login ghcr.io`.
+
+Собрать из исходников (`git clone` + `docker compose up -d --build`) тоже можно, но сборке нужно
+около 2 ГБ RAM: на маленьком VPS она уводит машину в swap.
 
 При первом открытии панель покажет экран регистрации — создайте аккаунт владельца (логин + пароль;
 passkey можно добавить позже).
@@ -96,7 +103,7 @@ Caddy по умолчанию не ограничивает ожидание о�
 Обновить и перезапустить:
 
 ```bash
-cd /opt/infra-billing && git pull && docker compose down && docker compose up -d --build && docker compose logs -f
+cd /opt/infra-billing && docker compose pull && docker compose up -d && docker compose logs -f
 ```
 
 Почистить неиспользуемые образы:
