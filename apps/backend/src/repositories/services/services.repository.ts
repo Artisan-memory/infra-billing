@@ -91,6 +91,14 @@ export class ServicesRepository {
     await this.prisma.service.delete({ where: { uuid } });
   }
 
+  /** Drop every service imported under an `externalId` namespace (e.g. "remnawave:node:"). */
+  async deleteByExternalIdPrefix(prefix: string): Promise<number> {
+    const { count } = await this.prisma.service.deleteMany({
+      where: { externalId: { startsWith: prefix } },
+    });
+    return count;
+  }
+
   /** Managed services no longer returned by the provider API → mark inactive (never delete). */
   async deactivateMissing(providerUuid: string, seenExternalIds: string[]): Promise<void> {
     await this.prisma.service.updateMany({

@@ -102,4 +102,12 @@ export class PaymentsRepository {
   async delete(uuid: string): Promise<void> {
     await this.prisma.payment.delete({ where: { uuid } });
   }
+
+  /** Drop every payment imported under an `externalId` namespace (e.g. "remnawave:bill:"). */
+  async deleteByExternalIdPrefix(prefix: string): Promise<number> {
+    const { count } = await this.prisma.payment.deleteMany({
+      where: { externalId: { startsWith: prefix } },
+    });
+    return count;
+  }
 }

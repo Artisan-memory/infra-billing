@@ -25,8 +25,8 @@ export type RemnawaveConnection = z.infer<typeof remnawaveConnectionSchema>;
 /**
  * Remnawave's infra billing carries no currency and no per-node price — `amount` is a bare number
  * and a billing node holds only a name, a country and a next-billing date. So the import asks for
- * nothing beyond the connection: amounts are USD (what Remnawave bills in) and imported nodes land
- * with no price, for the owner to fill in on the Services page.
+ * nothing beyond the connection: amounts are USD (what Remnawave bills in), and each node's monthly
+ * price is derived from the provider's own payment history (total paid / months / node count).
  */
 export const remnawaveImportSchema = remnawaveConnectionSchema;
 export type RemnawaveImport = z.infer<typeof remnawaveImportSchema>;
@@ -41,6 +41,9 @@ export const remnawaveProviderPreviewSchema = z.object({
   nodes: z.number().int().nonnegative().describe('Billing nodes'),
   records: z.number().int().nonnegative().describe('Billing history records'),
   amount: moneySchema.describe('Sum of the billing history amounts'),
+  // Monthly price each node will get: total paid / months covered / node count. Null when there is
+  // nothing to divide, and the nodes then arrive unpriced.
+  perNodeCost: moneySchema.describe('Derived monthly cost per node').nullable(),
   lastBilledAt: isoDateSchema.describe('Most recent billing date').nullable(),
   // Set when a panel provider already carries the same name — the import reuses it instead of
   // creating a duplicate.
@@ -68,6 +71,13 @@ export const remnawaveImportResultSchema = z.object({
   paymentsUpdated: z.number().int().nonnegative().describe('Already imported payments refreshed'),
 });
 export type RemnawaveImportResult = z.infer<typeof remnawaveImportResultSchema>;
+
+/** Result of removing everything a previous import created, so it can be run again from scratch. */
+export const remnawaveCleanupResultSchema = z.object({
+  servicesDeleted: z.number().int().nonnegative().describe('Imported services removed'),
+  paymentsDeleted: z.number().int().nonnegative().describe('Imported payments removed'),
+});
+export type RemnawaveCleanupResult = z.infer<typeof remnawaveCleanupResultSchema>;
 
 /** `externalId` prefixes that tie an imported row back to its Remnawave record (dedup key). */
 export const REMNAWAVE_NODE_PREFIX = 'remnawave:node:';

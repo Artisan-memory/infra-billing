@@ -1,9 +1,10 @@
-import { Body, Controller, HttpCode, Post } from '@nestjs/common';
+import { Body, Controller, Delete, HttpCode, Post } from '@nestjs/common';
 import { ApiBearerAuth, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { API, API_SUB, CONTROLLERS_INFO } from '@infra/shared';
 import { SessionOnly } from '../auth/session-only.decorator';
 import { MigrationService } from './migration.service';
 import {
+  RemnawaveCleanupResultDto,
   RemnawaveConnectionDto,
   RemnawaveImportDto,
   RemnawaveImportResultDto,
@@ -34,5 +35,13 @@ export class MigrationController {
   @ApiOkResponse({ type: RemnawaveImportResultDto })
   import(@Body() dto: RemnawaveImportDto) {
     return this.migration.import(dto);
+  }
+
+  @Delete(API_SUB.MIGRATION_REMNAWAVE)
+  @HttpCode(200)
+  @ApiOperation({ summary: 'Remove everything a previous Remnawave import created' })
+  @ApiOkResponse({ type: RemnawaveCleanupResultDto })
+  cleanup() {
+    return this.migration.cleanup();
   }
 }

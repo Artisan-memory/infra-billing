@@ -1,5 +1,6 @@
 import { createZodDto } from 'nestjs-zod';
 import {
+  remnawaveCleanupResultSchema,
   remnawaveConnectionSchema,
   remnawaveImportResultSchema,
   remnawaveImportSchema,
@@ -11,3 +12,4 @@ export class RemnawaveImportDto extends createZodDto(remnawaveImportSchema) {}
 
 export class RemnawavePreviewDto extends createZodDto(remnawavePreviewSchema) {}
 export class RemnawaveImportResultDto extends createZodDto(remnawaveImportResultSchema) {}
+export class RemnawaveCleanupResultDto extends createZodDto(remnawaveCleanupResultSchema) {}

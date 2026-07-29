@@ -1,10 +1,16 @@
-import { IconArrowLeft, IconDatabaseImport, IconLoader2, IconSearch } from '@tabler/icons-react';
+import {
+  IconArrowLeft,
+  IconDatabaseImport,
+  IconLoader2,
+  IconSearch,
+  IconTrash,
+} from '@tabler/icons-react';
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
 import { REMNAWAVE_CURRENCY, type RemnawavePreview } from '@infra/shared';
 import { apiErrorMessage } from '@/api/client';
-import { useRemnawaveImport, useRemnawavePreview } from '@/api/migration';
+import { useRemnawaveCleanup, useRemnawaveImport, useRemnawavePreview } from '@/api/migration';
 import { PasswordInput } from '@/components/PasswordInput';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -20,7 +26,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { useDisclosure } from '@/hooks/useDisclosure';
-import { formatDateShort, formatMoney } from '@/utils/format';
+import { formatCost, formatDateShort, formatMoney } from '@/utils/format';
 import { notifyError, notifySuccess } from '@/utils/notify';
 
 interface ConnectionForm {
@@ -69,6 +75,7 @@ function MigrationFlow({ onDone }: { onDone: () => void }) {
   const { t } = useTranslation();
   const preview = useRemnawavePreview();
   const runImport = useRemnawaveImport();
+  const cleanup = useRemnawaveCleanup();
   const [found, setFound] = useState<RemnawavePreview | null>(null);
 
   const { register, handleSubmit, getValues } = useForm<ConnectionForm>({
@@ -119,6 +126,21 @@ function MigrationFlow({ onDone }: { onDone: () => void }) {
         );
       }
       onDone();
+    } catch (e) {
+      notifyError(apiErrorMessage(e));
+    }
+  };
+
+  const doCleanup = async () => {
+    if (!window.confirm(t('settings.migration.confirmCleanup'))) return;
+    try {
+      const res = await cleanup.mutateAsync();
+      notifySuccess(
+        t('settings.migration.cleaned', {
+          services: res.servicesDeleted,
+          payments: res.paymentsDeleted,
+        }),
+      );
     } catch (e) {
       notifyError(apiErrorMessage(e));
     }
@@ -183,7 +205,22 @@ function MigrationFlow({ onDone }: { onDone: () => void }) {
 
       <p className="text-xs text-muted-foreground">{t('settings.migration.note')}</p>
 
-      <div className="flex justify-end">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="text-muted-foreground hover:text-destructive"
+          disabled={cleanup.isPending}
+          onClick={() => void doCleanup()}
+        >
+          {cleanup.isPending ? (
+            <IconLoader2 className="size-4 animate-spin" />
+          ) : (
+            <IconTrash className="size-4" />
+          )}
+          {t('settings.migration.cleanup')}
+        </Button>
         <Button type="submit" disabled={preview.isPending}>
           {preview.isPending ? (
             <IconLoader2 className="size-4 animate-spin" />
@@ -215,7 +252,7 @@ function Found({ preview }: { preview: RemnawavePreview }) {
         })}
       </p>
       <div className="overflow-x-auto">
-        <Table className="min-w-[480px]">
+        <Table className="min-w-[560px]">
           <TableHeader>
             <TableRow>
               <TableHead className="text-muted-foreground">
@@ -229,6 +266,9 @@ function Found({ preview }: { preview: RemnawavePreview }) {
               </TableHead>
               <TableHead className="text-muted-foreground">
                 {t('settings.migration.thAmount')}
+              </TableHead>
+              <TableHead className="text-muted-foreground">
+                {t('settings.migration.thPerNode')}
               </TableHead>
               <TableHead className="text-muted-foreground">
                 {t('settings.migration.thLastBilled')}
@@ -251,6 +291,7 @@ function Found({ preview }: { preview: RemnawavePreview }) {
                 <TableCell>{p.nodes}</TableCell>
                 <TableCell>{p.records}</TableCell>
                 <TableCell>{formatMoney(p.amount, REMNAWAVE_CURRENCY)}</TableCell>
+                <TableCell>{formatCost(p.perNodeCost, REMNAWAVE_CURRENCY)}</TableCell>
                 <TableCell className="text-sm text-muted-foreground">
                   {formatDateShort(p.lastBilledAt)}
                 </TableCell>

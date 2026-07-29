@@ -7,6 +7,7 @@ import {
   REMNAWAVE_BILL_PREFIX,
   REMNAWAVE_CURRENCY,
   REMNAWAVE_NODE_PREFIX,
+  RemnawaveCleanupResult,
   RemnawaveImportResult,
   RemnawavePreview,
   RemnawaveProviderPreview,
@@ -79,6 +80,7 @@ export class MigrationService {
         nodes: src.nodes.length,
         records: src.records.length,
         amount: amount.toFixed(2),
+        perNodeCost: perNodeMonthlyCost(src.records, src.nodes.length),
         lastBilledAt: lastBilledAt(src.records),
         matchedProviderUuid: matches.get(normalizeName(src.name)) ?? null,
       };
@@ -130,7 +132,9 @@ export class MigrationService {
       }
 
       if (src.nodes.length > 0) {
-        const counts = await this.upsertNodes(providerUuid, src.nodes);
+        // Remnawave has no per-node price, only what was paid to the provider — derive one from it.
+        const cost = perNodeMonthlyCost(src.records, src.nodes.length);
+        const counts = await this.upsertNodes(providerUuid, src.nodes, cost);
         result.servicesCreated += counts.created;
         result.servicesUpdated += counts.updated;
       }
@@ -149,10 +153,11 @@ export class MigrationService {
     return result;
   }
 
-  /** Billing nodes → services. Remnawave holds no price, so new ones arrive unpriced. */
+  /** Billing nodes → services, priced from the provider's payment history (`perNodeCost`). */
   private async upsertNodes(
     providerUuid: string,
     nodes: RemnawaveBillingNode[],
+    perNodeCost: string | null,
   ): Promise<{ created: number; updated: number }> {
     let created = 0;
     let updated = 0;
@@ -174,25 +179,26 @@ export class MigrationService {
           name,
           type: NODE_SERVICE_TYPE,
           countryCode: countryCode ?? 'XX',
-          // Remnawave stores no per-node price. 0 renders as "—" (price not set) in the UI.
-          cost: '0.00',
+          // Derived from the payment history; 0 when there is nothing to divide (renders as "—").
+          cost: perNodeCost ?? '0.00',
           currency: REMNAWAVE_CURRENCY,
           period: DEFAULT_NODE_PERIOD,
           nextBillingAt,
           isActive: true,
           // Not `isManaged`: there is no connector behind these, the owner edits them freely.
           isManaged: false,
-          meta: remnawaveNodeMeta(n),
+          meta: remnawaveNodeMeta(n, perNodeCost),
         });
         created += 1;
       } else {
-        // Re-run: refresh only what Remnawave actually owns. Cost, currency, period and isActive
-        // stay as the owner left them.
+        // Re-run: refresh what Remnawave owns, plus the derived price — more history makes it more
+        // accurate. An owner-edited price (costOverridden) is never touched.
         const data: Prisma.ServiceUpdateInput = {
           nextBillingAt,
-          meta: remnawaveNodeMeta(n),
+          meta: remnawaveNodeMeta(n, perNodeCost),
         };
         if (!existing.nameOverridden) data.name = name;
+        if (perNodeCost && !existing.costOverridden) data.cost = perNodeCost;
         // Don't downgrade a country the owner filled in when Remnawave has no node record left.
         if (countryCode) data.countryCode = countryCode;
         await this.services.update(existing.uuid, data);
@@ -283,6 +289,22 @@ export class MigrationService {
     return Array.from(sources.values());
   }
 
+  /**
+   * Remove everything a previous import created, so it can be run again from scratch. Scoped by the
+   * `remnawave:` externalId namespace, so hand-entered services and payments are never touched.
+   *
+   * Providers are left alone: they may already carry other data, and a re-import matches them by
+   * name and reuses them anyway. Deleting one by hand cascades to whatever is left under it.
+   */
+  async cleanup(): Promise<RemnawaveCleanupResult> {
+    const paymentsDeleted = await this.payments.deleteByExternalIdPrefix(REMNAWAVE_BILL_PREFIX);
+    const servicesDeleted = await this.services.deleteByExternalIdPrefix(REMNAWAVE_NODE_PREFIX);
+    this.logger.log(
+      `Remnawave cleanup: removed ${servicesDeleted} service(s), ${paymentsDeleted} payment(s)`,
+    );
+    return { servicesDeleted, paymentsDeleted };
+  }
+
   /** Panel providers keyed by normalized name, for reuse instead of creating duplicates. */
   private async existingProvidersByName(): Promise<Map<string, string>> {
     const rows = await this.providers.listAll();
@@ -303,6 +325,38 @@ function normalizeName(name: string): string {
 
 function sumAmounts(records: RemnawaveBillRecord[]): Decimal {
   return records.reduce((acc, r) => acc.plus(new Decimal(r.amount ?? 0)), new Decimal(0));
+}
+
+/**
+ * Per-node monthly cost, derived from what was actually paid: total paid / months covered / node
+ * count. Remnawave prices nothing per node — the only money it knows is the provider's billing
+ * history — so this spreads that across the provider's nodes.
+ *
+ * The same figure comes out whether the owner logged one payment per invoice or one per node, since
+ * both give the same monthly total. Null when there is nothing to divide (no nodes, no payments, or
+ * a non-positive total), and the node then arrives unpriced.
+ */
+function perNodeMonthlyCost(records: RemnawaveBillRecord[], nodeCount: number): string | null {
+  if (nodeCount <= 0 || records.length === 0) return null;
+  const total = sumAmounts(records);
+  if (total.lte(0)) return null;
+  const dates = records
+    .map((r) => parseDate(r.billedAt))
+    .filter((d): d is Date => d !== null)
+    .sort((a, b) => a.getTime() - b.getTime());
+  if (dates.length === 0) return null;
+  return total.div(monthsCovered(dates)).div(nodeCount).toFixed(2);
+}
+
+/** Calendar months from the first payment to the last, inclusive (so a single payment is 1). */
+function monthsCovered(sorted: Date[]): number {
+  const first = sorted[0];
+  const last = sorted[sorted.length - 1];
+  const months =
+    (last.getUTCFullYear() - first.getUTCFullYear()) * 12 +
+    (last.getUTCMonth() - first.getUTCMonth()) +
+    1;
+  return Math.max(1, months);
 }
 
 function lastBilledAt(records: RemnawaveBillRecord[]): string | null {
@@ -328,7 +382,10 @@ function normalizeCountryCode(raw: string | null | undefined): string | null {
 }
 
 /** Keep the Remnawave ids on the service so the row can be traced back after the import. */
-function remnawaveNodeMeta(n: RemnawaveBillingNode): Prisma.InputJsonValue {
+function remnawaveNodeMeta(
+  n: RemnawaveBillingNode,
+  perNodeCost: string | null,
+): Prisma.InputJsonValue {
   return {
     remnawave: {
       billingNodeUuid: n.uuid,
@@ -336,6 +393,8 @@ function remnawaveNodeMeta(n: RemnawaveBillingNode): Prisma.InputJsonValue {
       providerName: n.provider?.name ?? null,
       countryCode: n.node?.countryCode ?? null,
       nextBillingAt: n.nextBillingAt,
+      // Flags the price as derived from the provider's payment history, not read from Remnawave.
+      costEstimatedFromHistory: perNodeCost !== null,
     },
   };
 }
