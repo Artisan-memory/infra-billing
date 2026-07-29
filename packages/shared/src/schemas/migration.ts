@@ -1,6 +1,5 @@
 import { z } from 'zod';
-import { periodSchema } from '../enums';
-import { currencySchema, isoDateSchema, moneySchema, uuidSchema } from './common';
+import { isoDateSchema, moneySchema, uuidSchema } from './common';
 
 /**
  * One-off import of the Remnawave panel's own infra-billing records (Infra Billing Controller:
@@ -23,19 +22,17 @@ export const remnawaveConnectionSchema = z.object({
 });
 export type RemnawaveConnection = z.infer<typeof remnawaveConnectionSchema>;
 
-export const remnawaveImportSchema = remnawaveConnectionSchema.extend({
-  // Remnawave's infra billing stores bare numbers with no currency, so the owner names it here.
-  currency: currencySchema.describe('Currency of the imported amounts'),
-  // Where imported billing nodes land; defaults to the default project.
-  projectUuid: uuidSchema.describe('Project for imported nodes').optional(),
-  // Remnawave has no per-node price either — one cost is applied to every newly created service
-  // (never to an already imported one, so owner edits survive a re-run).
-  nodeCost: moneySchema.describe('Cost per period for each new node').optional(),
-  period: periodSchema.describe('Billing period for new nodes').optional(),
-  importNodes: z.boolean().describe('Import billing nodes as services').optional(),
-  importHistory: z.boolean().describe('Import billing history as payments').optional(),
-});
+/**
+ * Remnawave's infra billing carries no currency and no per-node price — `amount` is a bare number
+ * and a billing node holds only a name, a country and a next-billing date. So the import asks for
+ * nothing beyond the connection: amounts are USD (what Remnawave bills in) and imported nodes land
+ * with no price, for the owner to fill in on the Services page.
+ */
+export const remnawaveImportSchema = remnawaveConnectionSchema;
 export type RemnawaveImport = z.infer<typeof remnawaveImportSchema>;
+
+/** Currency of the imported amounts. Remnawave has no currency field; it bills in USD. */
+export const REMNAWAVE_CURRENCY = 'USD';
 
 /** What one Remnawave provider brings in, and whether it maps onto an existing panel provider. */
 export const remnawaveProviderPreviewSchema = z.object({

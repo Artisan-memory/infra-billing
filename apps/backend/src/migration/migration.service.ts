@@ -5,13 +5,13 @@ import {
   DEFAULT_PROJECT_UUID,
   Period,
   REMNAWAVE_BILL_PREFIX,
+  REMNAWAVE_CURRENCY,
   REMNAWAVE_NODE_PREFIX,
   RemnawaveImportResult,
   RemnawavePreview,
   RemnawaveProviderPreview,
 } from '@infra/shared';
 import { PaymentsRepository } from '@repositories/payments/payments.repository';
-import { ProjectsRepository } from '@repositories/projects/projects.repository';
 import { ProvidersRepository } from '@repositories/providers/providers.repository';
 import { ServicesRepository } from '@repositories/services/services.repository';
 import { RemnawaveClient } from './remnawave.client';
@@ -58,7 +58,6 @@ export class MigrationService {
     private readonly providers: ProvidersRepository,
     private readonly services: ServicesRepository,
     private readonly payments: PaymentsRepository,
-    private readonly projects: ProjectsRepository,
   ) {}
 
   /** Dry run: connect, count what is there, and say which providers already exist here. */
@@ -96,11 +95,7 @@ export class MigrationService {
 
   /** Run the import. Returns what was created versus refreshed. */
   async import(dto: RemnawaveImportDto): Promise<RemnawaveImportResult> {
-    const projectUuid = await this.resolveProject(dto.projectUuid);
-    const importNodes = dto.importNodes ?? true;
-    const importHistory = dto.importHistory ?? true;
-
-    const sources = await this.fetchSources(dto, { history: importHistory });
+    const sources = await this.fetchSources(dto);
     const matches = await this.existingProvidersByName();
 
     const result: RemnawaveImportResult = {
@@ -134,13 +129,13 @@ export class MigrationService {
         result.providersCreated += 1;
       }
 
-      if (importNodes && src.nodes.length > 0) {
-        const counts = await this.upsertNodes(providerUuid, projectUuid, src.nodes, dto);
+      if (src.nodes.length > 0) {
+        const counts = await this.upsertNodes(providerUuid, src.nodes);
         result.servicesCreated += counts.created;
         result.servicesUpdated += counts.updated;
       }
-      if (importHistory && src.records.length > 0) {
-        const counts = await this.upsertRecords(providerUuid, src.records, dto.currency);
+      if (src.records.length > 0) {
+        const counts = await this.upsertRecords(providerUuid, src.records);
         result.paymentsCreated += counts.created;
         result.paymentsUpdated += counts.updated;
       }
@@ -154,12 +149,10 @@ export class MigrationService {
     return result;
   }
 
-  /** Billing nodes → services. New ones get the form's cost/period; existing ones keep the owner's. */
+  /** Billing nodes → services. Remnawave holds no price, so new ones arrive unpriced. */
   private async upsertNodes(
     providerUuid: string,
-    projectUuid: string,
     nodes: RemnawaveBillingNode[],
-    dto: RemnawaveImportDto,
   ): Promise<{ created: number; updated: number }> {
     let created = 0;
     let updated = 0;
@@ -174,16 +167,17 @@ export class MigrationService {
       if (!existing) {
         await this.services.create({
           providerUuid,
-          projectUuid,
+          // Providers are shared across projects, so land nodes in the default project; the owner
+          // reassigns them on the Services page.
+          projectUuid: DEFAULT_PROJECT_UUID,
           externalId,
           name,
           type: NODE_SERVICE_TYPE,
           countryCode: countryCode ?? 'XX',
-          // Remnawave prices nothing per node, so the owner names one cost for the whole batch
-          // (or leaves it at zero and fills the real prices in on the Services page).
-          cost: dto.nodeCost ?? '0.00',
-          currency: dto.currency,
-          period: dto.period ?? DEFAULT_NODE_PERIOD,
+          // Remnawave stores no per-node price. 0 renders as "—" (price not set) in the UI.
+          cost: '0.00',
+          currency: REMNAWAVE_CURRENCY,
+          period: DEFAULT_NODE_PERIOD,
           nextBillingAt,
           isActive: true,
           // Not `isManaged`: there is no connector behind these, the owner edits them freely.
@@ -213,7 +207,6 @@ export class MigrationService {
   private async upsertRecords(
     providerUuid: string,
     records: RemnawaveBillRecord[],
-    currency: string,
   ): Promise<{ created: number; updated: number }> {
     const known = new Set(await this.payments.listExternalIds(providerUuid));
     let created = 0;
@@ -228,7 +221,7 @@ export class MigrationService {
       }
       await this.payments.upsertExternal(providerUuid, externalId, {
         amount: new Decimal(r.amount ?? 0).toFixed(2),
-        currency,
+        currency: REMNAWAVE_CURRENCY,
         type: 'topup',
         description: PAYMENT_DESCRIPTION,
         paymentDate,
@@ -243,10 +236,7 @@ export class MigrationService {
   }
 
   /** Read providers + nodes + history and group them per provider. */
-  private async fetchSources(
-    creds: RemnawaveConnectionDto,
-    opts: { history?: boolean } = {},
-  ): Promise<SourceProvider[]> {
+  private async fetchSources(creds: RemnawaveConnectionDto): Promise<SourceProvider[]> {
     const client = new RemnawaveClient(creds);
     const signal = AbortSignal.timeout(FETCH_TIMEOUT_MS);
     let providers: RemnawaveInfraProvider[];
@@ -255,7 +245,7 @@ export class MigrationService {
     try {
       providers = await client.fetchProviders(signal);
       nodes = await client.fetchBillingNodes(signal);
-      records = opts.history === false ? [] : await client.fetchHistory(signal);
+      records = await client.fetchHistory(signal);
     } catch (e) {
       throw new BadRequestException(
         signal.aborted
@@ -303,12 +293,6 @@ export class MigrationService {
       if (!map.has(key)) map.set(key, p.uuid);
     }
     return map;
-  }
-
-  private async resolveProject(uuid?: string): Promise<string> {
-    if (!uuid) return DEFAULT_PROJECT_UUID;
-    if (!(await this.projects.exists(uuid))) throw new BadRequestException('Project not found');
-    return uuid;
   }
 }
 
