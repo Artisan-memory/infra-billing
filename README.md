@@ -70,10 +70,30 @@ pw=$(openssl rand -hex 24) && sed -i "s/^POSTGRES_PASSWORD=.*/POSTGRES_PASSWORD=
 docker compose up -d && docker compose logs -f
 ```
 
-Пакет в GHCR должен быть публичным — иначе перед `pull` нужен `docker login ghcr.io`.
+**В каталоге деплоя должен лежать именно prod-compose** — тот, что скачан шагом 2. В репозитории
+`docker-compose.yml` другой: он собирает образ локально, и имя там без registry
+(`image: infra-billing:latest` + `build:`). Развернули клоном репозитория — `docker compose pull`
+пойдёт за этим именем на Docker Hub и ответит `pull access denied`: такого образа там нет и не
+будет. Для клона указывайте файл явно:
 
-Собрать из исходников (`git clone` + `docker compose up -d --build`) тоже можно, но сборке нужно
-около 2 ГБ RAM: на маленьком VPS она уводит машину в swap.
+```bash
+docker compose -f docker-compose-prod.yml pull
+# или один раз на сессию: export COMPOSE_FILE=docker-compose-prod.yml
+```
+
+Имена контейнеров, сеть и том с данными в обоих файлах одинаковые, поэтому переключение между ними
+ничего не теряет.
+
+Пакет в GHCR должен быть публичным — иначе `pull` ответит `unauthorized` уже с правильным именем, и
+перед ним нужен вход токеном с правом `read:packages`:
+
+```bash
+echo "$GHCR_PAT" | docker login ghcr.io -u <github-логин> --password-stdin
+```
+
+Собрать из исходников тоже можно — `git clone` и `docker compose up -d --build` (это как раз
+`docker-compose.yml` со сборкой), — но сборке нужно около 2 ГБ RAM: на маленьком VPS она уводит
+машину в swap.
 
 При первом открытии панель покажет экран регистрации — создайте аккаунт владельца (логин + пароль;
 passkey можно добавить позже).
@@ -100,10 +120,19 @@ Caddy по умолчанию не ограничивает ожидание о�
 
 ### Обновление
 
-Обновить и перезапустить:
+Обновить и перезапустить (каталог с prod-compose из шага 2):
 
 ```bash
 cd /opt/infra-billing && docker compose pull && docker compose up -d && docker compose logs -f
+```
+
+Если панель развёрнута клоном репозитория — то же самое, но с явным файлом, иначе `pull` уйдёт за
+несуществующим образом на Docker Hub:
+
+```bash
+cd /opt/infra-billing && docker compose -f docker-compose-prod.yml pull \
+  && docker compose -f docker-compose-prod.yml up -d \
+  && docker compose -f docker-compose-prod.yml logs -f
 ```
 
 Почистить неиспользуемые образы:
