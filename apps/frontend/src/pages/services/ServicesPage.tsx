@@ -64,9 +64,9 @@ export function ServicesPage() {
   const { data: rates } = useRates();
   const { data: settings } = useSettings();
   const [searchParams] = useSearchParams();
-  // A dashboard deep link (?selected=) must find its row, so that visit starts unfiltered in memory
-  // only: the saved filter stays in storage and returns on the next mount — unless a filter is
-  // changed here, in which case the on-screen filter is what gets saved.
+  // A dashboard or payments deep link (?selected=) must find its row, so that visit starts
+  // unfiltered in memory only: the saved filter stays in storage and returns on the next mount —
+  // unless a filter is changed here, in which case the on-screen filter is what gets saved.
   const [filter, setFilter] = usePersistedState<ServiceFilter>(
     'services-filter',
     parseServiceFilter,

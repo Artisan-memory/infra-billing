@@ -62,6 +62,8 @@ export function PaymentsPage() {
 
   const providerOptions = (providers ?? []).map((p) => ({ value: p.uuid, label: p.name }));
   const providerOf = (uuid: string) => providers?.find((p) => p.uuid === uuid);
+  const { data: services } = useServices();
+  const serviceOf = (uuid: string) => services?.find((s) => s.uuid === uuid);
 
   const form = useForm<PForm>({
     defaultValues: {
@@ -138,6 +140,7 @@ export function PaymentsPage() {
         isLoading={isLoading}
         total={total}
         providerOf={providerOf}
+        serviceOf={serviceOf}
         onDelete={doDelete}
       />
 
