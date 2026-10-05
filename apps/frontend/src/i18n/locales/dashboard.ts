@@ -66,6 +66,9 @@ export const dashboard = {
       estimatedSeries: 'Estimated',
       forecastSeries: 'Forecast',
       stat: '{{n}} mo spent {{spent}} · avg {{avg}}/mo · next {{m}} mo {{next}}',
+      inProgress: 'in progress',
+      paid: 'Paid',
+      vsAvg: 'vs average',
     },
     breakdown: {
       byType: 'By type',
@@ -167,6 +170,9 @@ export const dashboard = {
       estimatedSeries: 'Оценка',
       forecastSeries: 'Прогноз',
       stat: 'за {{n}} мес. {{spent}} · в среднем {{avg}}/мес. · следующие {{m}} мес. {{next}}',
+      inProgress: 'идёт',
+      paid: 'Оплачено',
+      vsAvg: 'к среднему',
     },
     breakdown: {
       byType: 'По типам',

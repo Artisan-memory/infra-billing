@@ -351,8 +351,13 @@ export function ProvidersTable({
                             />
                           </TableCell>
                           <TableCell>
-                            <div className="flex min-w-0 items-center gap-2 pl-8">
-                              <span className="text-ink-3" aria-hidden>
+                            {/* The dot sits under the provider icon, so the label lines up with
+                                the provider name instead of being pushed further right. */}
+                            <div className="flex min-w-0 items-center gap-2">
+                              <span
+                                className="flex w-6 shrink-0 justify-center text-ink-3"
+                                aria-hidden
+                              >
                                 ·
                               </span>
                               <span className="truncate text-ink-2">{a.label ?? mainLabel}</span>
