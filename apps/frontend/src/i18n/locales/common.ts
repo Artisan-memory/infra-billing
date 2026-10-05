@@ -136,7 +136,9 @@ export const common = {
       whatsNew: "What's new in v{{version}}",
       copyAll: 'Copy build info',
       releaseNotes: 'Release notes for v{{version}}',
-      allReleases: 'All releases',
+      version: 'Version',
+      devBranch: 'dev branch on GitHub',
+      openDevBranch: 'Development build: open the dev branch',
       openRelease: 'Version {{version}}: open release page',
     },
     notify: {
@@ -341,7 +343,9 @@ export const common = {
       whatsNew: 'Что нового в v{{version}}',
       copyAll: 'Скопировать сведения о сборке',
       releaseNotes: 'Заметки к выпуску v{{version}}',
-      allReleases: 'Все релизы',
+      version: 'Версия',
+      devBranch: 'Ветка dev на GitHub',
+      openDevBranch: 'Сборка для разработки: открыть ветку dev',
       openRelease: 'Версия {{version}}: открыть страницу релиза',
     },
     notify: {

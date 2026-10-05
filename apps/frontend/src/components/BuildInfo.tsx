@@ -4,7 +4,7 @@ import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useBuildInfo } from '@/api/buildInfo';
 import {
-  GITHUB_RELEASES_URL,
+  GITHUB_DEV_BRANCH_URL,
   githubCommitUrl,
   githubReleaseUrl,
   useLatestRelease,
@@ -15,7 +15,7 @@ import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/h
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
-import { isNewerVersion } from '@/lib/version';
+import { isNewerVersion, isReleaseVersion } from '@/lib/version';
 
 const DATE_FORMAT = 'DD.MM.YYYY HH:mm';
 
@@ -90,8 +90,8 @@ export function BuildInfo() {
   const { t } = useTranslation();
   const { data, isPending } = useBuildInfo();
   const version = data?.version ?? '';
-  // "dev" is the build-arg default (not a tagged release): nothing to compare against.
-  const isDev = version === 'dev';
+  // Not a tagged release: nothing to compare against, and the dev branch is where it comes from.
+  const isDev = version !== '' && !isReleaseVersion(version);
   const release = useLatestRelease(version !== '' && !isDev);
   const latest = release.data;
   const hasUpdate = !isDev && latest != null && isNewerVersion(latest, version);
@@ -104,7 +104,7 @@ export function BuildInfo() {
   const built = data.buildTime ? dayjs(data.buildTime) : null;
   const builtAt = built?.isValid() ? built : null;
   const label = isDev ? 'dev' : `v${version}`;
-  const releaseUrl = isDev ? GITHUB_RELEASES_URL : githubReleaseUrl(version);
+  const releaseUrl = isDev ? GITHUB_DEV_BRANCH_URL : githubReleaseUrl(version);
 
   let status: Status = 'pending';
   if (isDev) status = 'dev';
@@ -123,6 +123,7 @@ export function BuildInfo() {
   const none = t('common.none');
   const plainText = [
     `${t('app.brand')} ${label}`,
+    ...(isDev && version !== 'dev' ? [`${t('build.version')}: ${version}`] : []),
     `${t('build.date')}: ${builtAt ? `${builtAt.format(DATE_FORMAT)} (${data.buildTime})` : none}`,
     `${t('build.commit')}: ${commit || none}`,
     `${t('build.node')}: ${data.nodeVersion || none}`,
@@ -131,15 +132,17 @@ export function BuildInfo() {
   return (
     <HoverCard openDelay={200} closeDelay={150}>
       <HoverCardTrigger asChild>
-        {/* A quiet version next to the brand; an available update adds the attention dot. */}
+        {/* A quiet version next to the brand; an available update adds the attention dot. A dev
+            build reads "dev" in the brand's ink so it is never mistaken for a release. */}
         <a
           href={releaseUrl}
           target="_blank"
           rel="noopener noreferrer"
-          aria-label={isDev ? t('build.allReleases') : t('build.openRelease', { version })}
+          aria-label={isDev ? t('build.openDevBranch') : t('build.openRelease', { version })}
           className={cn(
             'inline-flex items-center gap-1 rounded-sm px-1 text-xs text-ink-3 outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50 data-[state=open]:text-foreground',
-            hasUpdate && 'text-foreground',
+            (hasUpdate || isDev) && 'text-foreground',
+            isDev && 'font-medium',
           )}
         >
           {label}
@@ -184,6 +187,7 @@ export function BuildInfo() {
         ) : null}
 
         <dl className="grid grid-cols-[auto_1fr] items-baseline gap-x-5 gap-y-2.5 p-4 text-sm">
+          {isDev && version !== 'dev' ? <Fact label={t('build.version')}>{version}</Fact> : null}
           <Fact label={t('build.date')}>
             {builtAt ? (
               <>
@@ -217,7 +221,7 @@ export function BuildInfo() {
         <div className="border-t border-hairline p-2">
           <Button asChild variant="ghost" size="sm" className="w-full justify-between">
             <a href={releaseUrl} target="_blank" rel="noopener noreferrer">
-              {isDev ? t('build.allReleases') : t('build.releaseNotes', { version })}
+              {isDev ? t('build.devBranch') : t('build.releaseNotes', { version })}
               <IconArrowUpRight className="size-4 text-ink-3" />
             </a>
           </Button>
