@@ -7,6 +7,7 @@ import { useEnums } from '@/constants';
 import { projectFavicon } from '@/utils/favicon';
 import { formatMoney } from '@/utils/format';
 import { CardHeadRow } from '@/components/ink/CardHeadRow';
+import { ServiceTypeGlyph } from '@/pages/services/ServiceTypeIcon';
 
 interface RankedItem {
   key: string;
@@ -66,7 +67,12 @@ export function ByTypeList({ byType, base }: { byType: AnalyticsSummary['byType'
       base={base}
       items={rows.map((r) => ({
         key: r.type,
-        name: <span className="block truncate">{enums.serviceTypeLabel(r.type)}</span>,
+        name: (
+          <div className="flex min-w-0 items-center gap-2">
+            <ServiceTypeGlyph type={r.type} size={18} />
+            <span className="truncate">{enums.serviceTypeLabel(r.type)}</span>
+          </div>
+        ),
         count: r.servicesCount,
         monthly: r.monthlyCost,
       }))}

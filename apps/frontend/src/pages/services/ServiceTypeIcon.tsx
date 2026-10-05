@@ -7,6 +7,7 @@ import {
   IconNetwork,
   IconServer2,
   IconServerBolt,
+  IconSparkles,
   IconWorld,
 } from '@tabler/icons-react';
 import { useState, type ReactNode } from 'react';
@@ -110,7 +111,15 @@ export function ServiceTypeIcon({
 }) {
   if (type === 'llm') return <LlmVendorIcon model={model} size={size} />;
   if (marker) return <ServiceMarkerPreview marker={marker} markerBg={markerBg} size={size} />;
-  const Cmp = TYPE_ICONS[type] ?? IconBox;
+  return <ServiceTypeGlyph type={type} size={size} />;
+}
+
+/**
+ * The type's own line icon, without a vendor logo or marker: for rows that stand for a whole type
+ * (a breakdown by type), where a model's vendor means nothing.
+ */
+export function ServiceTypeGlyph({ type, size = 18 }: { type: string; size?: number }) {
+  const Cmp = type === 'llm' ? IconSparkles : (TYPE_ICONS[type] ?? IconBox);
   return (
     <IconSlot size={size}>
       <Cmp size={Math.max(12, Math.round(size * 0.9))} stroke={1.5} className="block text-ink-3" />
