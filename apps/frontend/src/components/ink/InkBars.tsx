@@ -34,6 +34,8 @@ export const INK_BAR_KIND: Record<NonNullable<InkBar['kind']>, string> = {
 
 function Bar({ bar, max, faded }: { bar: InkBar; max: number; faded: boolean }) {
   const pct = max > 0 && bar.value > 0 ? Math.max((bar.value / max) * 100, 2) : 0;
+  // A zero month draws nothing: an outlined bar of zero height would still leave a dash.
+  if (pct === 0) return null;
   return (
     <span
       className={cn(
