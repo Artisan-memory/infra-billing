@@ -26,6 +26,9 @@ export function DashboardHero({
   const upcoming = [...(summary?.upcomingBillings ?? [])].sort(byDaysUntil);
   const shown = upcoming.slice(0, NEXT_CHARGES);
   const shownCosts = shown.map((b) => roundMoney(b.costBase));
+  // Rows show what will actually be charged, in the service's own currency; the total can only
+  // add them up in the base currency, so it is marked approximate when a row had to be converted.
+  const converted = shown.some((b) => b.currency !== base);
   const monthly = summary?.monthlyTotal ?? '0';
 
   const kpis = [
@@ -80,8 +83,7 @@ export function DashboardHero({
                 {t('dashboard.hero.chargesMeta', {
                   shown: shown.length,
                   total: upcoming.length,
-                  // Kept equal to the sum of the rows below, so the list adds up.
-                  amount: formatMoney(sumMoney(shownCosts), base),
+                  amount: `${converted ? '≈ ' : ''}${formatMoney(sumMoney(shownCosts), base)}`,
                 })}
               </p>
             )}
@@ -93,7 +95,10 @@ export function DashboardHero({
                   key={b.serviceUuid}
                   title={t('dashboard.hero.chargeTitle', {
                     provider: withAccount(b.providerName, b.accountLabel, t('common.accountMain')),
-                    cost: formatMoney(b.cost, b.currency),
+                    cost:
+                      b.currency === base
+                        ? formatMoney(b.cost, b.currency)
+                        : `≈ ${formatMoney(shownCosts[i], base)}`,
                   })}
                   className="flex items-center justify-between gap-3 text-sm"
                 >
@@ -104,7 +109,7 @@ export function DashboardHero({
                     <InkGlyph state={upcomingState(b)} label={coverageLabel(t, b.covered)} />
                     <span className="truncate">{b.name}</span>
                   </div>
-                  <span className="shrink-0">{formatMoney(shownCosts[i], base)}</span>
+                  <span className="shrink-0">{formatMoney(b.cost, b.currency)}</span>
                 </li>
               ))}
             </ul>
