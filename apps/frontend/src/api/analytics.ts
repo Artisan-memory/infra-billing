@@ -22,11 +22,13 @@ export function useForecast(months = 12, monthsBack = 3) {
   });
 }
 
-export function useBalanceHistory(uuid?: string) {
+/** Balance snapshots of one provider account, oldest first. */
+export function useBalanceHistory(accountUuid?: string) {
   return useQuery({
-    queryKey: ['balance-history', uuid],
-    enabled: Boolean(uuid),
+    queryKey: ['balance-history', accountUuid],
+    enabled: Boolean(accountUuid),
     queryFn: async () =>
-      (await api.get<BalancePoint[]>(API_PATH.PROVIDERS.BALANCE_HISTORY(uuid!))).data,
+      (await api.get<BalancePoint[]>(API_PATH.PROVIDER_ACCOUNTS.BALANCE_HISTORY(accountUuid!)))
+        .data,
   });
 }

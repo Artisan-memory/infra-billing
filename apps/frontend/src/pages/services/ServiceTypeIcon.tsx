@@ -10,7 +10,6 @@ import {
   IconWorld,
 } from '@tabler/icons-react';
 import { useState, type ReactNode } from 'react';
-import { cn } from '@/lib/utils';
 import { ServiceMarkerPreview } from './ServiceMarkerField';
 import { resolveLlmVendorIcon } from './llmVendorIcon';
 
@@ -27,10 +26,11 @@ const TYPE_ICONS: Record<string, Icon> = {
   other: IconBox,
 };
 
+// Every lead icon renders in grayscale: vendor logos and emoji keep their shape, not their colour.
 function IconSlot({ size, children }: { size: number; children: ReactNode }) {
   return (
     <span
-      className="inline-flex shrink-0 items-center justify-center self-center"
+      className="inline-flex shrink-0 items-center justify-center self-center grayscale"
       style={{ width: size, height: size }}
     >
       {children}
@@ -66,9 +66,8 @@ function LlmVendorIcon({ model, size }: { model?: string | null; size: number })
         {ready ? (
           <span
             aria-hidden
-            className={cn('block size-full', icon.adaptive && 'bg-foreground')}
+            className="block size-full bg-foreground"
             style={{
-              ...(icon.adaptive ? {} : { backgroundColor: icon.color }),
               WebkitMaskImage: `url(${icon.src})`,
               maskImage: `url(${icon.src})`,
               WebkitMaskSize: 'contain',
@@ -114,11 +113,7 @@ export function ServiceTypeIcon({
   const Cmp = TYPE_ICONS[type] ?? IconBox;
   return (
     <IconSlot size={size}>
-      <Cmp
-        size={Math.max(12, Math.round(size * 0.9))}
-        stroke={1.5}
-        className="block text-muted-foreground"
-      />
+      <Cmp size={Math.max(12, Math.round(size * 0.9))} stroke={1.5} className="block text-ink-3" />
     </IconSlot>
   );
 }
