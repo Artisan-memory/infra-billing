@@ -1,7 +1,14 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import Decimal from 'decimal.js';
 import dayjs from 'dayjs';
-import { AnalyticsSummary, BalancePoint, ForecastPoint, Period, ProjectStats } from '@infra/shared';
+import {
+  AccountSpend,
+  AnalyticsSummary,
+  BalancePoint,
+  ForecastPoint,
+  Period,
+  ProjectStats,
+} from '@infra/shared';
 import { BalanceSnapshotsRepository } from '@repositories/balance-snapshots/balance-snapshots.repository';
 import { PaymentsRepository } from '@repositories/payments/payments.repository';
 import { ProjectsRepository } from '@repositories/projects/projects.repository';
@@ -14,8 +21,10 @@ import { chargeSeverity } from '@common/billing-severity';
 import { isMeteredPeriod, monthlyCost } from '@common/money';
 import { overdueDays } from '@common/overdue';
 import { burnFromMonthlyCost, burnFromSnapshots, daysOfRunway } from '@common/runway';
+import { accountSpend, spendWindow } from '@common/spend';
 
 const ZERO = () => new Decimal(0);
+const SPEND_DAYS = 30; // the account spend window, complete UTC days
 
 interface Agg {
   monthly: Decimal;
@@ -573,6 +582,44 @@ export class AnalyticsService {
       currency: r.currency,
       capturedAt: r.capturedAt.toISOString(),
     }));
+  }
+
+  /** Daily spend of one account over the last 30 complete UTC days. */
+  async accountSpend(accountUuid: string): Promise<AccountSpend> {
+    const account = await this.accountsRepo.findByUuid(accountUuid);
+    if (!account) throw new NotFoundException('Account not found');
+    const now = new Date();
+    const { start, end } = spendWindow(now, SPEND_DAYS);
+    const [charges, firstChargeAt, snapshots, anchor] = await Promise.all([
+      this.paymentsRepo.chargesForAccount(accountUuid, start, end),
+      this.paymentsRepo.firstChargeAt(accountUuid),
+      this.snapshotsRepo.listForAccount(accountUuid, start),
+      this.snapshotsRepo.lastBefore(accountUuid, start),
+    ]);
+    const result = accountSpend({
+      charges: charges.map((c) => ({
+        amount: new Decimal(c.amount.toString()),
+        currency: c.currency,
+        paymentDate: c.paymentDate,
+      })),
+      firstChargeAt,
+      snapshots: (anchor ? [anchor, ...snapshots] : snapshots).map((s) => ({
+        balance: new Decimal(s.balance.toString()),
+        currency: s.currency,
+        capturedAt: s.capturedAt,
+      })),
+      balanceCurrency: account.balanceCurrency,
+      useSnapshots: !account.isPostpaid,
+      days: SPEND_DAYS,
+      now,
+    });
+    return {
+      ...result,
+      days: result.days.map((d) => ({ ...d, amount: d.amount?.toFixed(2) ?? null })),
+      last7d: result.last7d?.toFixed(2) ?? null,
+      last30d: result.last30d?.toFixed(2) ?? null,
+      perDay: result.perDay?.toFixed(2) ?? null,
+    };
   }
 }
 

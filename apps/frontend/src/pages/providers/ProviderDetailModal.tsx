@@ -1,9 +1,11 @@
 import type { Provider } from '@infra/shared';
+import { useQueries } from '@tanstack/react-query';
 import { IconArrowMerge, IconExternalLink, IconLoader2, IconTrash } from '@tabler/icons-react';
 import { type ReactNode, useRef, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
 import { apiErrorMessage } from '@/api/client';
+import { accountSpendQuery } from '@/api/analytics';
 import { useDeleteProvider, useUpdateProvider } from '@/api/providers';
 import { ProviderIcon } from '@/components/ProviderIcon';
 import { DEFAULT_ICON_BG, canonicalTablerIconName } from '@/components/tablerIconCatalog';
@@ -19,6 +21,7 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { providerFavicon } from '@/utils/favicon';
 import { formatDate, formatMoney } from '@/utils/format';
+import { sumMoney } from '@/utils/money';
 import { notifyError, notifySuccess } from '@/utils/notify';
 import { MergeProviderDialog } from './MergeProviderDialog';
 import { ProviderAccountModal } from './ProviderAccountModal';
@@ -46,6 +49,35 @@ function InfoRow({ label, value }: { label: string; value: ReactNode }) {
       <span className="text-ink-2">{label}</span>
       <span className="text-right">{value}</span>
     </div>
+  );
+}
+
+// The provider's spend over the last 30 days, one line per currency. Reads the same cached queries
+// as the account cards; "≈" when any account is estimated or covers only part of the month.
+function SpentRow({ provider }: { provider: Provider }) {
+  const { t } = useTranslation();
+  const results = useQueries({
+    queries: provider.accounts.map((a) => accountSpendQuery(a.uuid)),
+  });
+  const byCurrency = new Map<string, { amounts: string[]; approx: boolean }>();
+  for (const { data } of results) {
+    if (data?.source == null || data.currency == null || data.last30d == null) continue;
+    const entry = byCurrency.get(data.currency) ?? { amounts: [], approx: false };
+    entry.amounts.push(data.last30d);
+    entry.approx ||= data.approximate || data.coveredDays < 30;
+    byCurrency.set(data.currency, entry);
+  }
+  if (byCurrency.size === 0) return null;
+  return (
+    <InfoRow
+      label={t('providers.spend.detailRow')}
+      value={[...byCurrency].map(([currency, { amounts, approx }]) => (
+        <span key={currency} className="block">
+          {approx && '≈ '}
+          {formatMoney(sumMoney(amounts), currency)}
+        </span>
+      ))}
+    />
   );
 }
 
@@ -164,6 +196,7 @@ function DetailBody({
                   : '—'
               }
             />
+            <SpentRow provider={provider} />
             <InfoRow label={t('providers.account.title')} value={provider.accounts.length} />
             <InfoRow label={t('providers.detail.services')} value={provider.servicesCount} />
             <InfoRow label={t('providers.detail.payments')} value={provider.paymentsCount} />

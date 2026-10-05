@@ -11,7 +11,10 @@ export const CONTROLLERS_INFO = {
   SERVICES: { TAG: 'Services', DESCRIPTION: 'Paid resources at providers' },
   PAYMENTS: { TAG: 'Payments', DESCRIPTION: 'Log of actual payments' },
   ANALYTICS: { TAG: 'Analytics', DESCRIPTION: 'Spend summary and forecast' },
-  BALANCE_HISTORY: { TAG: 'Balance History', DESCRIPTION: 'Account balance snapshots' },
+  BALANCE_HISTORY: {
+    TAG: 'Balance History',
+    DESCRIPTION: 'Account balance snapshots and daily spend',
+  },
   RATES: { TAG: 'Exchange Rates', DESCRIPTION: 'Currency rates to the base currency' },
   SETTINGS: { TAG: 'Settings', DESCRIPTION: 'Panel settings' },
   NOTIFICATIONS: { TAG: 'Notifications', DESCRIPTION: 'Outgoing Telegram notifications' },

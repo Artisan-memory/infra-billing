@@ -23,4 +23,12 @@ export class BalanceSnapshotsRepository {
     if (from || to) where.capturedAt = { gte: from, lte: to };
     return this.prisma.balanceSnapshot.findMany({ where, orderBy: { capturedAt: 'asc' } });
   }
+
+  /** The account's last snapshot strictly before `before`: the starting point of a window. */
+  lastBefore(accountUuid: string, before: Date) {
+    return this.prisma.balanceSnapshot.findFirst({
+      where: { accountUuid, capturedAt: { lt: before } },
+      orderBy: { capturedAt: 'desc' },
+    });
+  }
 }

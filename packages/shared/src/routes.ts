@@ -56,6 +56,7 @@ export const API_SUB = {
   ACCOUNT_SYNC: `${ID}/sync`,
   ACCOUNT_SYNC_RUNS: `${ID}/sync-runs`,
   ACCOUNT_BALANCE_HISTORY: `${ID}/balance-history`,
+  ACCOUNT_SPEND: `${ID}/spend`,
   ACCOUNT_CREDENTIALS_REVEAL: `${ID}/credentials/reveal`,
   // netcup OAuth2 device flow (in-panel token acquisition).
   PROVIDER_NETCUP_DEVICE_START: 'netcup/device/start',
@@ -110,6 +111,7 @@ export const API_PATH = {
     SYNC_RUNS: (uuid: string) => pathId(API.PROVIDER_ACCOUNTS, API_SUB.ACCOUNT_SYNC_RUNS, uuid),
     BALANCE_HISTORY: (uuid: string) =>
       pathId(API.PROVIDER_ACCOUNTS, API_SUB.ACCOUNT_BALANCE_HISTORY, uuid),
+    SPEND: (uuid: string) => pathId(API.PROVIDER_ACCOUNTS, API_SUB.ACCOUNT_SPEND, uuid),
     CREDENTIALS_REVEAL: (uuid: string) =>
       pathId(API.PROVIDER_ACCOUNTS, API_SUB.ACCOUNT_CREDENTIALS_REVEAL, uuid),
   },

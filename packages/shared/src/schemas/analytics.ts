@@ -242,3 +242,31 @@ export const balancePointSchema = z.object({
   capturedAt: isoDateSchema.describe('Snapshot timestamp'),
 });
 export type BalancePoint = z.infer<typeof balancePointSchema>;
+
+/** One UTC day of an account's spend; `amount` is null outside the period the data covers. */
+export const accountSpendDaySchema = z.object({
+  date: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .describe('UTC day (YYYY-MM-DD)'),
+  amount: moneySchema.describe('Spent that day').nullable(),
+  estimated: z.boolean().describe('Includes an estimate for a top-up interval'),
+});
+export type AccountSpendDay = z.infer<typeof accountSpendDaySchema>;
+
+/**
+ * What an account spent over the last 30 complete UTC days (today excluded), in one currency.
+ * Source: the provider's own charges when it reports them, else balance declines between snapshots
+ * (a top-up interval is estimated from the account's average rate and marks the result approximate).
+ */
+export const accountSpendSchema = z.object({
+  currency: currencySchema.describe('Currency of every amount').nullable(),
+  source: z.enum(['charges', 'snapshots']).describe('Where the figures come from').nullable(),
+  approximate: z.boolean().describe('Some days are estimated'),
+  coveredDays: z.number().int().describe('Days of the window the data covers (0–30)'),
+  days: z.array(accountSpendDaySchema).describe('Oldest first, 30 entries'),
+  last7d: moneySchema.describe('Spent over the last 7 days').nullable(),
+  last30d: moneySchema.describe('Spent over the covered part of the last 30 days').nullable(),
+  perDay: moneySchema.describe('Average per covered day').nullable(),
+});
+export type AccountSpend = z.infer<typeof accountSpendSchema>;

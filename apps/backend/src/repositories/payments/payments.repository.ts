@@ -48,6 +48,24 @@ export class PaymentsRepository {
     return rows.map((r) => r.accountUuid);
   }
 
+  /** The account's `charge` rows dated in [from, to). */
+  chargesForAccount(accountUuid: string, from: Date, to: Date) {
+    return this.prisma.payment.findMany({
+      where: { accountUuid, type: 'charge', paymentDate: { gte: from, lt: to } },
+      select: { amount: true, currency: true, paymentDate: true },
+    });
+  }
+
+  /** Date of the account's first `charge` ever, or null when it has none. */
+  async firstChargeAt(accountUuid: string): Promise<Date | null> {
+    const row = await this.prisma.payment.findFirst({
+      where: { accountUuid, type: 'charge' },
+      orderBy: { paymentDate: 'asc' },
+      select: { paymentDate: true },
+    });
+    return row?.paymentDate ?? null;
+  }
+
   /** Earliest payment date per account (any type), used to backdate tariff estimates. */
   async earliestPaymentDateByAccount(): Promise<Map<string, Date>> {
     const rows = await this.prisma.payment.groupBy({

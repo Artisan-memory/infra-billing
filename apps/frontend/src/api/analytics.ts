@@ -1,5 +1,5 @@
-import { useQuery } from '@tanstack/react-query';
-import type { AnalyticsSummary, BalancePoint, ForecastPoint } from '@infra/shared';
+import { queryOptions, useQuery } from '@tanstack/react-query';
+import type { AccountSpend, AnalyticsSummary, BalancePoint, ForecastPoint } from '@infra/shared';
 import { api } from './client';
 import { API_PATH } from '@infra/shared';
 
@@ -31,4 +31,20 @@ export function useBalanceHistory(accountUuid?: string) {
       (await api.get<BalancePoint[]>(API_PATH.PROVIDER_ACCOUNTS.BALANCE_HISTORY(accountUuid!)))
         .data,
   });
+}
+
+/**
+ * Last 30 days of an account's spend. Under the `analytics` key, so syncs and payment changes
+ * refresh it; shared by the account cards and the provider's Details total.
+ */
+export function accountSpendQuery(accountUuid: string) {
+  return queryOptions({
+    queryKey: ['analytics', 'account-spend', accountUuid],
+    queryFn: async () =>
+      (await api.get<AccountSpend>(API_PATH.PROVIDER_ACCOUNTS.SPEND(accountUuid))).data,
+  });
+}
+
+export function useAccountSpend(accountUuid: string) {
+  return useQuery(accountSpendQuery(accountUuid));
 }

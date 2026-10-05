@@ -28,6 +28,7 @@ import { formatDate, formatMoney } from '@/utils/format';
 import { notifyError, notifySuccess } from '@/utils/notify';
 import { SYNC_STATE_GLYPH, accountDisplayName, accountSyncState } from '@/utils/providerState';
 import { syncLogLines } from '@/utils/syncLog';
+import { AccountSpend } from './AccountSpend';
 import { BalanceHistoryChart } from './BalanceHistoryChart';
 
 const LOG_RUNS = 8;
@@ -41,7 +42,8 @@ interface ProviderAccountsSectionProps {
   onEdit: (account: ProviderAccount) => void;
 }
 
-// The provider's accounts, one card each: state, balance, sync log, balance history and actions.
+// The provider's accounts, one card each: state, balance, spend, sync log, balance history and
+// actions.
 export function ProviderAccountsSection({
   provider,
   focusAccountUuid,
@@ -161,6 +163,8 @@ function AccountCard({ provider, account: a, focused, onSync, onEdit }: AccountC
           </span>
         )}
       </p>
+
+      <AccountSpend accountUuid={a.uuid} />
 
       {(api || a.balance != null) && (
         <div className="grid gap-4 md:grid-cols-2">
