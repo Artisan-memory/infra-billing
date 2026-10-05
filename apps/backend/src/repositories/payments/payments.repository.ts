@@ -4,6 +4,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 
 export interface PaymentFilters {
   providerUuid?: string;
+  accountUuid?: string;
   serviceUuid?: string;
   from?: Date;
   to?: Date;
@@ -33,28 +34,29 @@ export class PaymentsRepository {
   }
 
   /**
-   * Provider uuids that have at least one top-up / manual payment (type != `charge`). Used to tell
-   * consumption-only providers (Yandex, Selectel — charges but no top-ups) apart from providers
-   * where top-ups already represent the spend, so charges aren't double-counted.
+   * Accounts that have at least one top-up / manual payment (type != `charge`). Used to tell
+   * consumption-only accounts (Yandex, Selectel: charges but no top-ups) apart from accounts
+   * where top-ups already represent the spend, so charges aren't double-counted. Per account,
+   * because each account at a hoster keeps its own ledger.
    */
-  async providerUuidsWithTopups(): Promise<string[]> {
+  async accountUuidsWithTopups(): Promise<string[]> {
     const rows = await this.prisma.payment.findMany({
       where: { type: { not: 'charge' } },
-      distinct: ['providerUuid'],
-      select: { providerUuid: true },
+      distinct: ['accountUuid'],
+      select: { accountUuid: true },
     });
-    return rows.map((r) => r.providerUuid);
+    return rows.map((r) => r.accountUuid);
   }
 
-  /** Earliest payment date per provider (any type) — used to backdate tariff estimates. */
-  async earliestPaymentDateByProvider(): Promise<Map<string, Date>> {
+  /** Earliest payment date per account (any type), used to backdate tariff estimates. */
+  async earliestPaymentDateByAccount(): Promise<Map<string, Date>> {
     const rows = await this.prisma.payment.groupBy({
-      by: ['providerUuid'],
+      by: ['accountUuid'],
       _min: { paymentDate: true },
     });
     const map = new Map<string, Date>();
     for (const r of rows) {
-      if (r._min.paymentDate) map.set(r.providerUuid, r._min.paymentDate);
+      if (r._min.paymentDate) map.set(r.accountUuid, r._min.paymentDate);
     }
     return map;
   }
@@ -66,6 +68,7 @@ export class PaymentsRepository {
   ): Promise<{ rows: Payment[]; total: number }> {
     const where: Prisma.PaymentWhereInput = {};
     if (filters.providerUuid) where.providerUuid = filters.providerUuid;
+    if (filters.accountUuid) where.accountUuid = filters.accountUuid;
     if (filters.serviceUuid) where.serviceUuid = filters.serviceUuid;
     if (filters.from || filters.to) {
       where.paymentDate = { gte: filters.from, lte: filters.to };
@@ -94,11 +97,16 @@ export class PaymentsRepository {
     return this.prisma.payment.create({ data });
   }
 
-  /** Idempotent import upsert by (providerUuid, externalId); manual payments are never touched. */
-  upsertExternal(providerUuid: string, externalId: string, data: ExternalPaymentData) {
+  /** Idempotent import upsert by (accountUuid, externalId); manual payments are never touched. */
+  upsertExternal(
+    accountUuid: string,
+    providerUuid: string,
+    externalId: string,
+    data: ExternalPaymentData,
+  ) {
     return this.prisma.payment.upsert({
-      where: { providerUuid_externalId: { providerUuid, externalId } },
-      create: { providerUuid, externalId, ...data },
+      where: { accountUuid_externalId: { accountUuid, externalId } },
+      create: { accountUuid, providerUuid, externalId, ...data },
       update: data,
     });
   }

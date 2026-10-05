@@ -6,11 +6,11 @@ import { PrismaService } from '../../prisma/prisma.service';
 export class BalanceSnapshotsRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  async record(providerUuid: string, balance: string, currency: string): Promise<void> {
-    await this.prisma.balanceSnapshot.create({ data: { providerUuid, balance, currency } });
+  async record(accountUuid: string, balance: string, currency: string): Promise<void> {
+    await this.prisma.balanceSnapshot.create({ data: { accountUuid, balance, currency } });
   }
 
-  /** All providers' snapshots captured since `from`, oldest first (runway burn-rate input). */
+  /** All accounts' snapshots captured since `from`, oldest first (runway burn-rate input). */
   listSince(from: Date) {
     return this.prisma.balanceSnapshot.findMany({
       where: { capturedAt: { gte: from } },
@@ -18,8 +18,8 @@ export class BalanceSnapshotsRepository {
     });
   }
 
-  listForProvider(providerUuid: string, from?: Date, to?: Date) {
-    const where: Prisma.BalanceSnapshotWhereInput = { providerUuid };
+  listForAccount(accountUuid: string, from?: Date, to?: Date) {
+    const where: Prisma.BalanceSnapshotWhereInput = { accountUuid };
     if (from || to) where.capturedAt = { gte: from, lte: to };
     return this.prisma.balanceSnapshot.findMany({ where, orderBy: { capturedAt: 'asc' } });
   }

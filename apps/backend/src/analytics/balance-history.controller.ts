@@ -6,13 +6,13 @@ import { BalanceHistoryQueryDto, BalancePointDto } from './dto/analytics.dto';
 
 @ApiTags(CONTROLLERS_INFO.BALANCE_HISTORY.TAG)
 @ApiBearerAuth()
-@Controller(API.PROVIDERS)
+@Controller(API.PROVIDER_ACCOUNTS)
 export class BalanceHistoryController {
   constructor(private readonly analytics: AnalyticsService) {}
 
-  @ApiOperation({ summary: 'Get provider balance history' })
+  @ApiOperation({ summary: 'Get account balance history' })
   @ApiOkResponse({ type: [BalancePointDto] })
-  @Get(API_SUB.PROVIDER_BALANCE_HISTORY)
+  @Get(API_SUB.ACCOUNT_BALANCE_HISTORY)
   history(@Param(ID_PARAM, ParseUUIDPipe) uuid: string, @Query() query: BalanceHistoryQueryDto) {
     return this.analytics.balanceHistory(uuid, query.from, query.to);
   }
