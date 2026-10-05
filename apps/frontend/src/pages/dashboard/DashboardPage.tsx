@@ -13,10 +13,10 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { notifyError } from '@/utils/notify';
 import { notifySyncAll } from '@/utils/syncNotify';
-import { AttentionTable } from './AttentionTable';
+import { AttentionCards } from './AttentionCards';
 import { ByProjectList, ByTypeList } from './BreakdownLists';
 import { ByProviderCard } from './ByProviderCard';
-import { buildAttentionRows } from './dashboardUtils';
+import { buildAttentionGroups } from './dashboardUtils';
 import { DashboardHero } from './DashboardHero';
 import { LastSyncCard } from './LastSyncCard';
 import { SpendByMonthCard } from './SpendByMonthCard';
@@ -81,7 +81,7 @@ export function DashboardPage() {
     return PREVIEW_RUNWAY;
   }, [summary?.balanceRunway, params]);
 
-  const attention = buildAttentionRows(t, {
+  const attention = buildAttentionGroups(t, {
     overdue: summary?.overdueBillings ?? [],
     upcoming: summary?.upcomingBillings ?? [],
     runway,
@@ -92,8 +92,10 @@ export function DashboardPage() {
   const uncovered = (summary?.upcomingBillings ?? []).filter(
     (b) => b.covered === false && b.severity !== 'critical',
   ).length;
-  const attentionCount = attention.length + uncovered;
-  const attentionState: InkState = attention.some((r) => r.state === 'failed')
+  // Top-ups are the remedy for uncovered charges, not separate problems, so they don't count.
+  const problems = [...attention.overdue, ...attention.uncovered, ...attention.runway];
+  const attentionCount = problems.length + uncovered;
+  const attentionState: InkState = problems.some((r) => r.state === 'failed')
     ? 'failed'
     : attentionCount > 0
       ? 'warn'
@@ -151,7 +153,7 @@ export function DashboardPage() {
         </Card>
       )}
 
-      <AttentionTable rows={attention} />
+      <AttentionCards groups={attention} />
 
       <UpcomingTable upcoming={summary?.upcomingBillings ?? []} />
 
