@@ -1,5 +1,5 @@
 import type { Provider, ProviderAccount } from '@infra/shared';
-import { IconExternalLink, IconRefresh } from '@tabler/icons-react';
+import { IconCornerDownRight, IconExternalLink, IconRefresh } from '@tabler/icons-react';
 import { useMutationState } from '@tanstack/react-query';
 import dayjs from 'dayjs';
 import {
@@ -351,14 +351,15 @@ export function ProvidersTable({
                             />
                           </TableCell>
                           <TableCell>
-                            {/* The dot sits under the provider icon, so the label lines up with
-                                the provider name instead of being pushed further right. */}
+                            {/* A corner arrow under the provider icon ties the account to the
+                                row above; the label lines up with the provider name. */}
                             <div className="flex min-w-0 items-center gap-2">
-                              <span
-                                className="flex w-6 shrink-0 justify-center text-ink-3"
-                                aria-hidden
-                              >
-                                ·
+                              <span className="flex w-6 shrink-0 justify-center" aria-hidden>
+                                <IconCornerDownRight
+                                  size={16}
+                                  stroke={1.5}
+                                  className="text-slate"
+                                />
                               </span>
                               <span className="truncate text-ink-2">{a.label ?? mainLabel}</span>
                               {aState === 'off' && (
