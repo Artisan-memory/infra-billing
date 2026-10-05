@@ -39,9 +39,7 @@ export function ByProviderCard({ providerRows, base, providerOf }: ByProviderCar
   if (rows.length === 0) return null;
   return (
     <Card className="gap-0 overflow-hidden py-0">
-      <CardHeadRow title={t('dashboard.byProvider.title')} count={rows.length}>
-        {base && <span className="shrink-0 text-xs text-ink-2">{base}</span>}
-      </CardHeadRow>
+      <CardHeadRow title={t('dashboard.byProvider.title')} count={rows.length} />
       <Table className="min-w-[600px]">
         <TableHeader>
           <TableRow>
@@ -90,8 +88,8 @@ export function ByProviderCard({ providerRows, base, providerOf }: ByProviderCar
                   </div>
                 </TableCell>
                 <TableCell className="text-right text-ink-2">{p.servicesCount}</TableCell>
-                <TableCell className="text-right">{formatMoney(p.monthlyCost)}</TableCell>
-                <TableCell className="text-right">{formatMoney(p.spent)}</TableCell>
+                <TableCell className="text-right">{formatMoney(p.monthlyCost, base)}</TableCell>
+                <TableCell className="text-right">{formatMoney(p.spent, base)}</TableCell>
                 <TableCell
                   className={cn('pr-6 text-right', p.balances.length === 0 && 'text-ink-2')}
                 >

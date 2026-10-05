@@ -14,6 +14,10 @@ interface SpendByMonthCardProps {
   base: string;
 }
 
+/** A leading month below this share of the busiest past month counts as "not tracked yet". */
+const MEANINGFUL_SHARE = 0.2;
+const MIN_PAST_MONTHS = 3;
+
 export function SpendByMonthCard({ forecast, base }: SpendByMonthCardProps) {
   const { t } = useTranslation();
   const { data: settings } = useSettings();
@@ -22,7 +26,7 @@ export function SpendByMonthCard({ forecast, base }: SpendByMonthCardProps) {
     Boolean(settings?.forecastTariffBackfill) && !settings?.forecastTariffBackfillForce;
   const thisMonth = dayjs().format('YYYY-MM');
 
-  const points = (forecast ?? []).map((p) => {
+  const all = (forecast ?? []).map((p) => {
     const future = p.month > thisMonth;
     let kind: NonNullable<InkBar['kind']> = 'projected';
     let amount = p.projected;
@@ -36,6 +40,15 @@ export function SpendByMonthCard({ forecast, base }: SpendByMonthCardProps) {
     }
     return { month: p.month, future, kind, amount: roundMoney(amount), actual: p.actual };
   });
+
+  // The first months of a history are often near-empty (before the payments were imported), and
+  // they only draw a row of stubs. Start at the first month that carries a real share of the peak,
+  // keeping at least a few past months so a young history still has a shape.
+  const pastAll = all.filter((p) => !p.future);
+  const peak = Math.max(0, ...pastAll.map((p) => Number(p.amount)));
+  const firstReal = pastAll.findIndex((p) => Number(p.amount) >= peak * MEANINGFUL_SHARE);
+  const start = Math.min(Math.max(firstReal, 0), Math.max(pastAll.length - MIN_PAST_MONTHS, 0));
+  const points = all.slice(start);
 
   const kindLabel = {
     actual: t('dashboard.charts.actualSeries'),
