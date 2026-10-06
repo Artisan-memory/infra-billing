@@ -297,6 +297,10 @@ export class SyncService implements OnModuleInit {
         syncedName: sd.name,
         syncedType: sd.type,
         syncedCost: sd.cost != null ? sd.cost.toFixed(2) : null,
+        // A synced price is a cost in a period and a currency: the form restores all three, or a
+        // daily figure would come back as a monthly price.
+        ...(sd.period ? { syncedPeriod: sd.period } : {}),
+        syncedCurrency: sd.currency ?? accountCurrency,
         ...(sd.countryCode ? { syncedCountry: sd.countryCode } : {}),
         ...(incomingVendor ? { syncedVendor: incomingVendor } : {}),
         ...(vendorOverridden && prevVendor ? { vendor: prevVendor } : {}),

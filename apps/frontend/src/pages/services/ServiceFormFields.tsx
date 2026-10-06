@@ -77,6 +77,8 @@ export function ServiceFormFields({
   const syncedName = metaString(editing?.meta, 'syncedName') || undefined;
   const syncedType = metaString(editing?.meta, 'syncedType') || undefined;
   const syncedCost = metaString(editing?.meta, 'syncedCost') || undefined;
+  const syncedPeriod = metaString(editing?.meta, 'syncedPeriod') || undefined;
+  const syncedCurrency = metaString(editing?.meta, 'syncedCurrency') || undefined;
   const marker = watch('marker');
   const markerBg = watch('markerBg');
   const vendor = watch('vendor');
@@ -136,6 +138,18 @@ export function ServiceFormFields({
   };
   const loadedCost = trimMoney(String(defaultValues?.cost ?? ''));
   const baselineCost = syncedCost != null ? trimMoney(syncedCost) : loadedCost;
+  // A synced price is a cost in its own period and currency: restore them together, or a daily
+  // figure would be saved as a monthly price.
+  const restoreCost = () => {
+    setValue('cost', baselineCost, restoreOpts);
+    if (syncedCost == null) return;
+    if (syncedPeriod && periodOptions.some((o) => o.value === syncedPeriod)) {
+      setValue('period', syncedPeriod, restoreOpts);
+    }
+    if (syncedCurrency && currencyOptions.some((o) => o.value === syncedCurrency)) {
+      setValue('currency', syncedCurrency, restoreOpts);
+    }
+  };
   const showCostMark = Boolean(
     editing &&
       showOverrideMark(
@@ -330,7 +344,7 @@ export function ServiceFormFields({
               {showCostMark && (
                 <OverriddenMark
                   label={t('services.detail.costOverridden')}
-                  onRestore={() => setValue('cost', baselineCost, restoreOpts)}
+                  onRestore={restoreCost}
                 />
               )}
             </div>
