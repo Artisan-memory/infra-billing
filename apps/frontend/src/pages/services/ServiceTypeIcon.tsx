@@ -1,7 +1,7 @@
 import type { Icon } from '@tabler/icons-react';
 import {
   IconBox,
-  IconCloud,
+  IconBucket,
   IconDatabase,
   IconLicense,
   IconNetwork,
@@ -21,7 +21,7 @@ const TYPE_ICONS: Record<string, Icon> = {
   dedicated: IconServerBolt,
   domain: IconWorld,
   cdn: IconNetwork,
-  storage: IconCloud,
+  storage: IconBucket,
   db: IconDatabase,
   license: IconLicense,
   other: IconBox,
