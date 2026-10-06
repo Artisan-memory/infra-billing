@@ -71,7 +71,8 @@ export const providers = {
       serviceUsernameDesc: 'IAM service user: Profile → User management',
       password: 'Password',
       project: 'Project (optional)',
-      projectDesc: 'Cloud platform project name — for importing cloud servers',
+      projectDesc:
+        'Cloud platform project name — for importing cloud servers, routers and S3 buckets',
       apiBaseUrl: 'API base URL',
       loginEmail: 'Login (email)',
       totpSecret: 'TOTP secret (if OTP 2FA is enabled)',
@@ -307,7 +308,8 @@ export const providers = {
       serviceUsernameDesc: 'Сервисный пользователь IAM: Профиль → Управление пользователями',
       password: 'Пароль',
       project: 'Проект (необязательно)',
-      projectDesc: 'Имя проекта Облачной платформы — для импорта облачных серверов',
+      projectDesc:
+        'Имя проекта Облачной платформы — для импорта облачных серверов, роутеров и бакетов S3',
       apiBaseUrl: 'API base URL',
       loginEmail: 'Логин (email)',
       totpSecret: 'TOTP-секрет (если включена 2FA по OTP)',
