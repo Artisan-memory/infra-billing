@@ -15,6 +15,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { guessCountryFromName } from '@/utils/countries';
 import { normalizeMoney, trimMoney } from '@/utils/format';
 import { AccountSelect, accountsOf, impliedAccount } from './AccountSelect';
 import { OverriddenMark } from './OverriddenMark';
@@ -67,6 +68,7 @@ export function ServiceFormFields({
     control,
     setValue,
     getValues,
+    getFieldState,
     watch,
     formState: { errors, defaultValues },
   } = form;
@@ -136,6 +138,16 @@ export function ServiceFormFields({
       if (baseline) setValue('countryCode', baseline, restoreOpts);
     }
   };
+  // Country follows the name ("FI-02" → Finland) until the owner picks one by hand: a manual pick
+  // marks the field dirty, an automatic one doesn't. A saved service with a country keeps it.
+  const suggestCountry = (nextName: string) => {
+    if (!LOCATED_TYPES.has(getValues('type')) || getFieldState('countryCode').isDirty) return;
+    const saved = defaultValues?.countryCode ?? '';
+    if (editing && saved && saved !== 'XX') return;
+    const guess = guessCountryFromName(nextName);
+    if (guess && guess !== getValues('countryCode')) setValue('countryCode', guess);
+  };
+
   const loadedCost = trimMoney(String(defaultValues?.cost ?? ''));
   const baselineCost = syncedCost != null ? trimMoney(syncedCost) : loadedCost;
   // A synced price is a cost in its own period and currency: restore them together, or a daily
@@ -260,6 +272,7 @@ export function ServiceFormFields({
             aria-invalid={!!errors.name}
             {...register('name', {
               validate: (v) => (v.trim() ? true : t('validation.enterName')),
+              onChange: (e) => suggestCountry(e.target.value),
             })}
           />
           {errors.name && <p className="text-xs text-destructive">{errors.name.message}</p>}
