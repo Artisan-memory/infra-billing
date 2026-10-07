@@ -32,6 +32,12 @@ const NODE_SERVICE_TYPE = 'vps';
 const DEFAULT_NODE_PERIOD: Period = 'monthly';
 const PAYMENT_DESCRIPTION = 'Remnawave';
 
+/** Where imported rows land: a panel provider and the account that owns them. */
+interface ImportTarget {
+  providerUuid: string;
+  accountUuid: string;
+}
+
 /** A Remnawave provider plus everything the import will attach to it. */
 interface SourceProvider {
   uuid: string;
@@ -82,7 +88,7 @@ export class MigrationService {
         amount: amount.toFixed(2),
         perNodeCost: perNodeMonthlyCost(src.records, src.nodes.length),
         lastBilledAt: lastBilledAt(src.records),
-        matchedProviderUuid: matches.get(normalizeName(src.name)) ?? null,
+        matchedProviderUuid: matches.get(normalizeName(src.name))?.providerUuid ?? null,
       };
     });
 
@@ -113,33 +119,33 @@ export class MigrationService {
       // Reuse a provider of the same name — the owner may already track this hoster here, and its
       // spend belongs on the same card. Only a genuinely new name creates a provider, always
       // `manual`: the import brings records, not API credentials.
-      const matched = matches.get(normalizeName(src.name));
-      let providerUuid: string;
-      if (matched) {
-        providerUuid = matched;
+      let target = matches.get(normalizeName(src.name));
+      if (target) {
         result.providersMatched += 1;
       } else {
+        // A provider always has at least one account; the import's rows go on that first one.
         const created = await this.providers.create({
           name: src.name,
           kind: 'manual',
           loginUrl: src.loginUrl,
           faviconLink: src.faviconLink,
+          accounts: { create: {} },
         });
-        providerUuid = created.uuid;
+        target = { providerUuid: created.uuid, accountUuid: created.accounts[0].uuid };
         // Keep the map current so two Remnawave providers with the same name land on one provider.
-        matches.set(normalizeName(src.name), providerUuid);
+        matches.set(normalizeName(src.name), target);
         result.providersCreated += 1;
       }
 
       if (src.nodes.length > 0) {
         // Remnawave has no per-node price, only what was paid to the provider — derive one from it.
         const cost = perNodeMonthlyCost(src.records, src.nodes.length);
-        const counts = await this.upsertNodes(providerUuid, src.nodes, cost);
+        const counts = await this.upsertNodes(target, src.nodes, cost);
         result.servicesCreated += counts.created;
         result.servicesUpdated += counts.updated;
       }
       if (src.records.length > 0) {
-        const counts = await this.upsertRecords(providerUuid, src.records);
+        const counts = await this.upsertRecords(target, src.records);
         result.paymentsCreated += counts.created;
         result.paymentsUpdated += counts.updated;
       }
@@ -155,7 +161,7 @@ export class MigrationService {
 
   /** Billing nodes → services, priced from the provider's payment history (`perNodeCost`). */
   private async upsertNodes(
-    providerUuid: string,
+    { providerUuid, accountUuid }: ImportTarget,
     nodes: RemnawaveBillingNode[],
     perNodeCost: string | null,
   ): Promise<{ created: number; updated: number }> {
@@ -167,11 +173,12 @@ export class MigrationService {
       const name = n.name?.trim() || n.node?.name?.trim() || 'Remnawave node';
       const countryCode = normalizeCountryCode(n.node?.countryCode);
       const nextBillingAt = parseDate(n.nextBillingAt);
-      const existing = await this.services.findByExternalId(providerUuid, externalId);
+      const existing = await this.services.findByExternalId(accountUuid, externalId);
 
       if (!existing) {
         await this.services.create({
           providerUuid,
+          accountUuid,
           // Providers are shared across projects, so land nodes in the default project; the owner
           // reassigns them on the Services page.
           projectUuid: DEFAULT_PROJECT_UUID,
@@ -211,10 +218,10 @@ export class MigrationService {
 
   /** Billing history → payments (`topup`: money paid to the provider, counted as spend). */
   private async upsertRecords(
-    providerUuid: string,
+    { providerUuid, accountUuid }: ImportTarget,
     records: RemnawaveBillRecord[],
   ): Promise<{ created: number; updated: number }> {
-    const known = new Set(await this.payments.listExternalIds(providerUuid));
+    const known = new Set(await this.payments.listExternalIds(accountUuid));
     let created = 0;
     let updated = 0;
 
@@ -225,7 +232,7 @@ export class MigrationService {
         this.logger.warn(`Remnawave bill ${r.uuid} has an unusable billedAt — skipped`);
         continue;
       }
-      await this.payments.upsertExternal(providerUuid, externalId, {
+      await this.payments.upsertExternal(accountUuid, providerUuid, externalId, {
         amount: new Decimal(r.amount ?? 0).toFixed(2),
         currency: REMNAWAVE_CURRENCY,
         type: 'topup',
@@ -305,14 +312,20 @@ export class MigrationService {
     return { servicesDeleted, paymentsDeleted };
   }
 
-  /** Panel providers keyed by normalized name, for reuse instead of creating duplicates. */
-  private async existingProvidersByName(): Promise<Map<string, string>> {
-    const rows = await this.providers.listAll();
-    const map = new Map<string, string>();
+  /**
+   * Panel providers keyed by normalized name, for reuse instead of creating duplicates. A matched
+   * provider receives the import on its oldest account, the one it was created with.
+   */
+  private async existingProvidersByName(): Promise<Map<string, ImportTarget>> {
+    const rows = await this.providers.listWithAccounts();
+    const map = new Map<string, ImportTarget>();
     // First writer wins, so the oldest provider of a given name is the one reused.
     for (const p of rows) {
       const key = normalizeName(p.name);
-      if (!map.has(key)) map.set(key, p.uuid);
+      const account = p.accounts[0];
+      if (account && !map.has(key)) {
+        map.set(key, { providerUuid: p.uuid, accountUuid: account.uuid });
+      }
     }
     return map;
   }

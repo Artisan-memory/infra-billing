@@ -40,7 +40,7 @@
 ## Стек
 
 - **Backend:** NestJS 11 (Node 22) · Prisma 7 · PostgreSQL 18 · zod (`nestjs-zod`) · axios · grammY
-- **Frontend:** Vite · React 19 · shadcn/ui · Tailwind CSS v4 · RemoCN (Remotion) · TanStack Query · axios
+- **Frontend:** Vite · React 19 · shadcn/ui · Tailwind CSS v4 · Golos Text · TanStack Query · axios
 - **Монорепо:** npm-workspaces — `apps/backend`, `apps/frontend`, `packages/shared` (общие zod-схемы)
 - **Деплой:** единый Docker-образ (бэкенд раздаёт API + собранный SPA) + отдельный Postgres
 
@@ -227,6 +227,9 @@ docker compose exec infra-billing cli reset-admin --yes
 curl -H "Authorization: Bearer ib_…" https://infra-billing/api/providers
 ```
 
+Каждый провайдер приходит с массивом `accounts[]` (у каждого аккаунта свои креды, баланс и синк)
+и суммами `balances[]` по валютам; аккаунт правится через `/api/provider-accounts/{uuid}`.
+
 Токены имеют полный доступ к данным (провайдеры, сервисы, платежи, синк, настройки, аналитика),
 но **не к секретам провайдеров**: расшифровка кредов доступна только из сессии владельца, токену
 на этот роут отвечают 403.
@@ -255,8 +258,11 @@ curl -H "Authorization: Bearer ib_…" https://infra-billing/api/providers
   у FirstVDS это «Доступ к API» в настройках биллинга — иначе синк упадёт с ошибкой
   `forbidden_auth_method`. 2FA в этом режиме не работает (нет сессии для подтверждения кода) —
   отключите её у такого хостера.
-- **Selectel** — номер аккаунта + сервисный пользователь IAM (имя + пароль) с ролью на биллинг;
-  опц. имя проекта Облачной платформы для облачных серверов.
+- **Selectel** — номер аккаунта + сервисный пользователь IAM (имя + пароль) с ролью
+  «Наблюдатель» (`reader`): она даёт баланс, потребление и список бакетов (роли «Биллинг» для
+  бакетов мало); опц. имя проекта Облачной платформы — для облачных серверов, роутеров и
+  бакетов S3. Стоимость каждого — среднее потребление в сутки за последние 7 дней (у сервера —
+  вместе с его дисками и публичными IP).
 - **4VPS.SU** — API-ключ (ЛК → раздел API) + id панели (обычно `1`).
 - **Netlen** — API-ключ (панель → раздел API). Важно: добавьте IP сервера в whitelist ключа, иначе
   запросы отклоняются (`NO_IP_WHITELISTED`). Баланс, серверы (цена в USD) и реестр транзакций
