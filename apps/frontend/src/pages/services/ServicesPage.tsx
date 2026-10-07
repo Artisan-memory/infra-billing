@@ -95,9 +95,19 @@ export function ServicesPage() {
   const providerOf = (uuid: string) => providers?.find((p) => p.uuid === uuid);
   const projectOptions = (projects ?? []).map((p) => ({ value: p.uuid, label: p.name }));
   const projectOf = (uuid: string) => projects?.find((p) => p.uuid === uuid);
-  // Default a new service to the default project (or the first one).
-  const defaultProjectUuid =
-    projects?.find((p) => p.uuid === DEFAULT_PROJECT_UUID)?.uuid ?? projectOptions[0]?.value ?? '';
+  // A new service lands in the project most of the listed services use; with no services yet (or a
+  // tie) the default project wins, then the first one.
+  const defaultProjectUuid = useMemo(() => {
+    const fallback =
+      projects?.find((p) => p.uuid === DEFAULT_PROJECT_UUID)?.uuid ?? projects?.[0]?.uuid ?? '';
+    const counts = new Map<string, number>();
+    for (const s of services ?? []) counts.set(s.projectUuid, (counts.get(s.projectUuid) ?? 0) + 1);
+    let best = fallback;
+    for (const p of projects ?? []) {
+      if ((counts.get(p.uuid) ?? 0) > (counts.get(best) ?? 0)) best = p.uuid;
+    }
+    return best;
+  }, [projects, services]);
 
   const { sort, toggleSort, resetSort } = useTableSort('services-sort', SERVICE_SORT_KEYS);
   const sorted = sortRows(
