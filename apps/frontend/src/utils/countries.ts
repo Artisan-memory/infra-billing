@@ -8,6 +8,52 @@ const CODES =
     ' ',
   );
 
+const CODE_SET = new Set(CODES);
+// Common names that aren't the ISO code or the official English name.
+const ALIASES: Record<string, string> = { UK: 'GB', USA: 'US', UAE: 'AE' };
+const MIN_PREFIX = 3;
+
+let namesByCode: [string, string[]][] | null = null;
+
+/** Upper-cased English and Russian names per code, built once on first use. */
+function countryNames(): [string, string[]][] {
+  if (namesByCode) return namesByCode;
+  const displays = ['en', 'ru'].flatMap((lang) => {
+    try {
+      return [new Intl.DisplayNames([lang], { type: 'region' })];
+    } catch {
+      return [];
+    }
+  });
+  namesByCode = CODES.map((code) => [
+    code,
+    displays.map((d) => (d.of(code) ?? '').toUpperCase()).filter(Boolean),
+  ]);
+  return namesByCode;
+}
+
+/**
+ * Guesses a country from the start of a server name: "FI-02" → FI, "FINLAND123" → FI,
+ * "Нидерланды-1" → NL. The leading letters are read as an ISO code when there are exactly two,
+ * otherwise matched against English and Russian country names (a whole name, or a prefix of at
+ * least three letters that only one country starts with). A word merely starting with a name
+ * doesn't count ("Omaneko" is not Oman). Null when nothing fits unambiguously.
+ */
+export function guessCountryFromName(name: string): string | null {
+  const word = /^\p{L}+/u.exec(name.trim())?.[0]?.toUpperCase();
+  if (!word) return null;
+  if (ALIASES[word]) return ALIASES[word];
+  if (word.length === 2) return CODE_SET.has(word) ? word : null;
+  if (word.length < MIN_PREFIX) return null;
+
+  const matches = new Set<string>();
+  for (const [code, names] of countryNames()) {
+    if (names.includes(word)) return code;
+    if (names.some((n) => n.startsWith(word))) matches.add(code);
+  }
+  return matches.size === 1 ? [...matches][0] : null;
+}
+
 /** Country `<Select>` options { value: ISO2, label: "🇷🇺 Russia" }, localized + sorted by name. */
 export function useCountryOptions() {
   const { i18n } = useTranslation();
