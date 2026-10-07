@@ -20,9 +20,16 @@ import { cn } from '@/lib/utils';
 import { projectFavicon, providerFavicon } from '@/utils/favicon';
 import { countryFlag, formatCost, formatDateShort, truncate } from '@/utils/format';
 import type { ServiceSortKey } from './servicesSort';
-import { LOCATED_TYPES, ServiceTypeIcon } from './ServiceTypeIcon';
+import {
+  LOCATED_TYPES,
+  ServiceTypeIcon,
+  serviceTypeMarker,
+  serviceTypeMarkerBg,
+  serviceTypeModel,
+} from './ServiceTypeIcon';
 
 const NAME_MAX_LENGTH = 40;
+const DESCRIPTION_MAX_LENGTH = 60;
 
 interface ServicesTableProps {
   services: Service[] | undefined;
@@ -95,23 +102,30 @@ export function ServicesTable({
                   )}
                 >
                   <TableCell className="py-3">
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1.5 leading-none">
                       {LOCATED_TYPES.has(s.type) ? (
-                        <span>{countryFlag(s.countryCode)}</span>
+                        <span className="inline-flex size-[18px] shrink-0 items-center justify-center self-center text-[15px] leading-none">
+                          {countryFlag(s.countryCode)}
+                        </span>
                       ) : (
-                        <ServiceTypeIcon type={s.type} />
+                        <ServiceTypeIcon
+                          type={s.type}
+                          model={serviceTypeModel(s.meta)}
+                          marker={serviceTypeMarker(s.meta)}
+                          markerBg={serviceTypeMarkerBg(s.meta)}
+                        />
                       )}
                       {s.name.length > NAME_MAX_LENGTH ? (
                         <Tooltip>
                           <TooltipTrigger asChild>
-                            <span className="font-semibold">
+                            <span className="font-semibold leading-none">
                               {truncate(s.name, NAME_MAX_LENGTH)}
                             </span>
                           </TooltipTrigger>
                           <TooltipContent>{s.name}</TooltipContent>
                         </Tooltip>
                       ) : (
-                        <span className="font-semibold">{s.name}</span>
+                        <span className="font-semibold leading-none">{s.name}</span>
                       )}
                       {!s.isActive && (
                         <Badge variant="secondary" className="text-[10px] uppercase tracking-wide">
@@ -119,11 +133,24 @@ export function ServicesTable({
                         </Badge>
                       )}
                     </div>
+                    {s.description &&
+                      (s.description.length > DESCRIPTION_MAX_LENGTH ? (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <p className="mt-1 pl-6 text-xs text-muted-foreground">
+                              {truncate(s.description, DESCRIPTION_MAX_LENGTH)}
+                            </p>
+                          </TooltipTrigger>
+                          <TooltipContent className="max-w-xs">{s.description}</TooltipContent>
+                        </Tooltip>
+                      ) : (
+                        <p className="mt-1 pl-6 text-xs text-muted-foreground">{s.description}</p>
+                      ))}
                   </TableCell>
                   <TableCell>
                     <EntityLabel
                       name={provider?.name ?? ''}
-                      src={providerFavicon(provider ?? { faviconLink: null, loginUrl: null })}
+                      src={providerFavicon(provider)}
                       iconName={provider?.iconName}
                       iconBg={provider?.iconBg}
                     />
@@ -131,7 +158,7 @@ export function ServicesTable({
                   <TableCell>
                     <EntityLabel
                       name={project?.name ?? ''}
-                      src={projectFavicon(project?.faviconLink ?? null)}
+                      src={projectFavicon(project)}
                       iconName={project?.iconName}
                       iconBg={project?.iconBg}
                     />

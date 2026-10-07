@@ -23,6 +23,9 @@ export const providerSchema = z.object({
   balanceCurrency: currencySchema.describe('Balance currency').nullable(),
   // Invoice-billed (postpaid): balance is not prepaid funds → excluded from balance warnings.
   isPostpaid: z.boolean().describe('Invoice-billed / postpaid'),
+  // Owner switch: false stops autosync, "Sync all" and manual sync. Services, balance and
+  // analytics are untouched — the provider is only muted in the UI.
+  isEnabled: z.boolean().describe('Sync enabled'),
   balanceSyncedAt: isoDateSchema.describe('Balance update time').nullable(),
   lastSyncAt: isoDateSchema.describe('Last successful sync').nullable(),
   lastSyncError: z.string().describe('Last sync error').nullable(),
@@ -41,6 +44,7 @@ export const providerSchema = z.object({
   hasTotpSecret: z.boolean().describe('Stored TOTP secret present').optional(),
   hasApiPassword: z.boolean().describe('Stored API password present').optional(),
   hasSecretKey: z.boolean().describe('Stored secret API key present').optional(),
+  useCatalogNames: z.boolean().describe('OpenRouter: use catalog display names').optional(),
   createdAt: isoDateSchema.describe('Creation time'),
   updatedAt: isoDateSchema.describe('Last update time'),
 });
@@ -77,8 +81,9 @@ const credentialFields = {
   panelId: z.string().min(1).describe('Billing panel id').optional(),
   // Beget: the separate panel "Beget API" password (legacy hosting API). Enables balance sync.
   apiPassword: z.string().min(1).describe('Beget API password').optional(),
-  // Porkbun: the secret API key, paired with `token` (the API key).
+  // Porkbun / Spaceship: the secret API key, paired with `token` (the API key).
   secretKey: z.string().min(1).describe('Secret API key').optional(),
+  useCatalogNames: z.boolean().describe('OpenRouter: use catalog display names').optional(),
 };
 
 export const createProviderSchema = z.object({
@@ -98,6 +103,7 @@ export const updateProviderSchema = z.object({
   iconName: iconNameSchema.describe('Tabler icon name').nullable().optional(),
   iconBg: iconBgSchema.describe('Icon tile background').nullable().optional(),
   isPostpaid: z.boolean().describe('Invoice-billed / postpaid').optional(),
+  isEnabled: z.boolean().describe('Sync enabled').optional(),
   ...credentialFields,
 });
 export type UpdateProvider = z.infer<typeof updateProviderSchema>;

@@ -19,10 +19,14 @@ import type { HostbillCredentials } from './hostbill/hostbill.types';
 import { LinodeConnector } from './linode/linode.connector';
 import { NetcupConnector } from './netcup/netcup.connector';
 import { NetlenConnector } from './netlen/netlen.connector';
+import { OpenRouterConnector } from './openrouter/openrouter.connector';
+import { parseOpenRouterCredentials } from './openrouter/openrouter.types';
 import { PorkbunConnector } from './porkbun/porkbun.connector';
 import type { PorkbunCredentials } from './porkbun/porkbun.types';
 import { SelectelConnector } from './selectel/selectel.connector';
 import type { SelectelCredentials } from './selectel/selectel.types';
+import { SpaceshipConnector } from './spaceship/spaceship.connector';
+import type { SpaceshipCredentials } from './spaceship/spaceship.types';
 import { StormwallConnector } from './stormwall/stormwall.connector';
 import { TimewebConnector } from './timeweb/timeweb.connector';
 import { VdsinaConnector } from './vdsina/vdsina.connector';
@@ -69,6 +73,9 @@ export class ConnectorFactory {
       case 'porkbun':
         // Porkbun secret is JSON: { apiKey, secretApiKey } (X-API-Key / X-Secret-API-Key headers).
         return new PorkbunConnector(JSON.parse(token) as PorkbunCredentials);
+      case 'spaceship':
+        // Spaceship secret is JSON: { apiKey, apiSecret } (X-API-Key / X-API-Secret headers).
+        return new SpaceshipConnector(JSON.parse(token) as SpaceshipCredentials);
       case 'vultr':
         // Vultr secret is the raw API key (single string, sent as the Authorization Bearer header).
         return new VultrConnector(token);
@@ -95,6 +102,8 @@ export class ConnectorFactory {
       case 'doubleservers':
         // Double Servers secret is JSON: { username (email), password, totpSecret? }.
         return new DoubleServersConnector(JSON.parse(token) as DoubleServersCredentials);
+      case 'openrouter':
+        return new OpenRouterConnector(parseOpenRouterCredentials(token));
       default:
         throw new Error(`Connector for kind="${kind}" is not supported`);
     }

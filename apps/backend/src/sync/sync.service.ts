@@ -15,6 +15,7 @@ import { ServicesRepository } from '@repositories/services/services.repository';
 import { SettingsRepository } from '@repositories/settings/settings.repository';
 import { SyncRunsRepository } from '@repositories/sync-runs/sync-runs.repository';
 import { CryptoService } from '../crypto/crypto.service';
+import { FaviconsService } from '../favicons/favicons.service';
 import { ConnectorFactory } from '@connectors/connector.factory';
 import { PaymentData, ServiceData } from '@connectors/connector.interface';
 import { mapSyncRun } from '@common/mappers';
@@ -43,6 +44,7 @@ export class SyncService implements OnModuleInit {
     private readonly syncRuns: SyncRunsRepository,
     private readonly settings: SettingsRepository,
     private readonly crypto: CryptoService,
+    private readonly favicons: FaviconsService,
     private readonly connectors: ConnectorFactory,
     private readonly scheduler: SchedulerRegistry,
   ) {}
@@ -81,7 +83,7 @@ export class SyncService implements OnModuleInit {
     this.logger.log(`Provider autosync every ${hours}h`);
   }
 
-  /** Sync every non-manual provider; failures are isolated. */
+  /** Sync every enabled non-manual provider; failures are isolated. */
   async syncAllProviders(): Promise<void> {
     const providers = await this.providers.listSyncable();
     for (const p of providers) {
@@ -96,7 +98,7 @@ export class SyncService implements OnModuleInit {
     }
   }
 
-  /** Manually sync every non-manual provider in parallel; returns a summary for the UI. */
+  /** Manually sync every enabled non-manual provider in parallel; summary for the UI. */
   async syncAll(): Promise<{ total: number; ok: number; failed: number }> {
     const providers = await this.providers.listSyncable();
     const results = await Promise.allSettled(providers.map((p) => this.syncProvider(p.uuid)));
@@ -115,6 +117,8 @@ export class SyncService implements OnModuleInit {
     if (provider.kind === 'manual') {
       throw new BadRequestException('Manual providers cannot be synced');
     }
+    // Switched off by the owner: no run, no lastSyncError, nothing for the alerts to pick up.
+    if (!provider.isEnabled) throw new BadRequestException('Provider is disabled');
 
     const run = await this.syncRuns.createRunning(uuid);
     const controller = new AbortController();
@@ -124,6 +128,22 @@ export class SyncService implements OnModuleInit {
       if (!provider.credentialsEnc) throw new Error('Provider has no API token');
       const token = this.crypto.decrypt(provider.credentialsEnc);
       const connector = this.connectors.create(provider.kind, token);
+
+      // Needs no auth (reads the public login page) and runs before fetchAccount: the icon
+      // resolves even when the credentials are wrong. Non-fatal; null keeps the stored link.
+      if (connector.fetchFaviconUrl) {
+        try {
+          const url = await connector.fetchFaviconUrl(controller.signal);
+          if (url && url !== provider.faviconLink) {
+            await this.providers.updateFaviconLink(uuid, url);
+            this.favicons.invalidateProvider(uuid);
+          }
+        } catch (e) {
+          this.logger.warn(
+            `Favicon fetch for "${provider.name}" (${uuid}) skipped: ${e instanceof Error ? e.message : String(e)}`,
+          );
+        }
+      }
 
       const account = await this.withRetry(
         `fetchAccount "${provider.name}"`,
@@ -221,13 +241,35 @@ export class SyncService implements OnModuleInit {
       const nextBilling =
         sd.nextBilling && !Number.isNaN(sd.nextBilling.getTime()) ? sd.nextBilling : null;
       const existing = await this.services.findByExternalId(providerUuid, sd.externalId);
-      // Keep the provider's proposed name/type/cost in meta even when overridden, so the
+      // Keep the provider's proposed name/type/cost/vendor in meta even when overridden, so the
       // UI can drop the pencil (and update can clear the flag) when the owner reverts.
+      const incomingMeta = { ...(sd.meta ?? {}) } as Record<string, unknown>;
+      const incomingVendor =
+        typeof incomingMeta.vendor === 'string' && incomingMeta.vendor.trim()
+          ? incomingMeta.vendor.trim()
+          : null;
+      const prevMeta = (existing?.meta ?? {}) as Record<string, unknown>;
+      const prevVendor =
+        typeof prevMeta.vendor === 'string' && prevMeta.vendor.trim()
+          ? prevMeta.vendor.trim()
+          : null;
+      const prevSyncedVendor =
+        typeof prevMeta.syncedVendor === 'string' && prevMeta.syncedVendor.trim()
+          ? prevMeta.syncedVendor.trim()
+          : null;
+      const vendorOverridden =
+        Boolean(prevVendor) &&
+        ((prevSyncedVendor != null && prevVendor !== prevSyncedVendor) ||
+          (prevSyncedVendor == null && incomingVendor != null && prevVendor !== incomingVendor));
+
       const meta = {
-        ...(sd.meta ?? {}),
+        ...incomingMeta,
         syncedName: sd.name,
         syncedType: sd.type,
         syncedCost: sd.cost != null ? sd.cost.toFixed(2) : null,
+        ...(sd.countryCode ? { syncedCountry: sd.countryCode } : {}),
+        ...(incomingVendor ? { syncedVendor: incomingVendor } : {}),
+        ...(vendorOverridden && prevVendor ? { vendor: prevVendor } : {}),
       } as Prisma.InputJsonValue;
 
       if (!existing) {

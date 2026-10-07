@@ -13,10 +13,15 @@ import {
   normalizeAezaBaseUrl,
   parseAezaCredentials,
 } from '@connectors/aeza/aeza.types';
+import {
+  OpenRouterCredentials,
+  parseOpenRouterCredentials,
+} from '@connectors/openrouter/openrouter.types';
 import { VDSINA_BASE_URLS } from '@connectors/vdsina/vdsina.types';
 import { YandexConnector } from '../connectors/yandex/yandex.connector';
 import type { YandexCredentials } from '../connectors/yandex/yandex.types';
 import { CryptoService } from '../crypto/crypto.service';
+import { FaviconsService } from '../favicons/favicons.service';
 import { mapProvider, mapService } from '@common/mappers';
 import { CreateProviderDto, UpdateProviderDto, YandexDiscoverDto } from './dto/provider.dto';
 
@@ -28,6 +33,7 @@ export class ProvidersService {
   constructor(
     private readonly providers: ProvidersRepository,
     private readonly crypto: CryptoService,
+    private readonly favicons: FaviconsService,
   ) {}
 
   async list(): Promise<ProviderDto[]> {
@@ -71,6 +77,12 @@ export class ProvidersService {
     if (kind === 'aeza') {
       return { baseUrl: this.decodeAezaCredentials(enc).baseUrl ?? null };
     }
+    if (kind === 'openrouter') {
+      const c = this.decodeOpenRouterCredentials(enc);
+      return {
+        useCatalogNames: c.useCatalogNames !== false,
+      };
+    }
     if (kind === 'beget' || kind === 'doubleservers') {
       const c = this.decodeCredentials(enc);
       return { username: c.username ?? null };
@@ -108,6 +120,9 @@ export class ProvidersService {
     ) {
       return { hasToken: true };
     }
+    if (kind === 'openrouter') {
+      return { hasToken: Boolean(this.decodeOpenRouterCredentials(enc).token) };
+    }
     if (kind === 'aeza') return { hasToken: Boolean(this.decodeAezaCredentials(enc).token) };
     const c = this.decodeCredentials(enc);
     if (kind === '4vps' || kind === 'vdsina') return { hasToken: Boolean(c.token) };
@@ -115,13 +130,16 @@ export class ProvidersService {
     if (kind === 'porkbun') {
       return { hasToken: Boolean(c.apiKey), hasSecretKey: Boolean(c.secretApiKey) };
     }
+    if (kind === 'spaceship') {
+      return { hasToken: Boolean(c.apiKey), hasSecretKey: Boolean(c.apiSecret) };
+    }
     if (kind === 'yandex') {
       return { hasToken: Boolean(c.keyId && c.serviceAccountId && c.privateKey) };
     }
-    if (kind === 'selectel' || kind === 'hostbill') {
+    if (kind === 'selectel') {
       return { hasPassword: Boolean(c.password) };
     }
-    if (kind === 'billmgr') {
+    if (kind === 'billmgr' || kind === 'hostbill') {
       return { hasPassword: Boolean(c.password), hasTotpSecret: Boolean(c.totpSecret) };
     }
     if (kind === 'beget') {
@@ -158,6 +176,11 @@ export class ProvidersService {
       return token ? { token } : {};
     }
 
+    if (kind === 'openrouter') {
+      const token = this.decodeOpenRouterCredentials(enc).token;
+      return token ? { token } : {};
+    }
+
     if (kind === 'aeza') {
       const token = this.decodeAezaCredentials(enc).token;
       return token ? { token } : {};
@@ -176,6 +199,12 @@ export class ProvidersService {
       if (c.secretApiKey) out.secretKey = c.secretApiKey;
       return out;
     }
+    if (kind === 'spaceship') {
+      const out: ProviderCredentialsReveal = {};
+      if (c.apiKey) out.token = c.apiKey;
+      if (c.apiSecret) out.secretKey = c.apiSecret;
+      return out;
+    }
     if (kind === 'yandex') {
       if (!c.keyId || !c.serviceAccountId || !c.privateKey) return {};
       return {
@@ -190,10 +219,10 @@ export class ProvidersService {
         ),
       };
     }
-    if (kind === 'selectel' || kind === 'hostbill') {
+    if (kind === 'selectel') {
       return c.password ? { password: c.password } : {};
     }
-    if (kind === 'billmgr') {
+    if (kind === 'billmgr' || kind === 'hostbill') {
       const out: ProviderCredentialsReveal = {};
       if (c.password) out.password = c.password;
       if (c.totpSecret) out.totpSecret = c.totpSecret;
@@ -238,17 +267,20 @@ export class ProvidersService {
     if (dto.iconName !== undefined) data.iconName = dto.iconName;
     if (dto.iconBg !== undefined) data.iconBg = dto.iconBg;
     if (dto.isPostpaid !== undefined) data.isPostpaid = dto.isPostpaid;
+    if (dto.isEnabled !== undefined) data.isEnabled = dto.isEnabled;
     // Merge onto existing credentials so a partial edit works, e.g. adding only a TOTP
     // secret to an existing BILLmanager provider without re-entering the password.
     const creds = this.buildCredentials(existing.kind, dto, existing.credentialsEnc);
     if (creds !== null) data.credentialsEnc = creds;
     const p = await this.providers.update(uuid, data);
+    if (dto.loginUrl !== undefined) this.favicons.invalidateProvider(uuid);
     return this.withCredentialHints(mapProvider(p), p.kind, p.credentialsEnc);
   }
 
   async remove(uuid: string): Promise<void> {
     await this.ensureExists(uuid);
     await this.providers.delete(uuid);
+    this.favicons.invalidateProvider(uuid);
   }
 
   // Encrypt creds for storage: timeweb/hetzner → raw token; hostbill/billmgr/selectel/4vps → JSON.
@@ -267,9 +299,24 @@ export class ProvidersService {
       panelId?: string;
       apiPassword?: string;
       secretKey?: string;
+      useCatalogNames?: boolean;
     },
     existingEnc?: Uint8Array | null,
   ): Uint8Array<ArrayBuffer> | null {
+    if (kind === 'openrouter') {
+      if (!dto.token && dto.useCatalogNames === undefined) {
+        return null;
+      }
+      const base = this.decodeOpenRouterCredentials(existingEnc);
+      const token = dto.token ?? base.token;
+      if (!token) throw new BadRequestException('Provide the OpenRouter Management API key');
+      const creds: OpenRouterCredentials = {
+        token,
+        useCatalogNames:
+          dto.useCatalogNames !== undefined ? dto.useCatalogNames : base.useCatalogNames !== false,
+      };
+      return this.crypto.encrypt(JSON.stringify(creds));
+    }
     if (kind === '4vps') {
       // JSON { token, panelId? }; merge so a panel-id-only edit keeps the token.
       if (!dto.token && !dto.panelId) return null;
@@ -335,7 +382,7 @@ export class ProvidersService {
       return this.crypto.encrypt(JSON.stringify(creds));
     }
     if (kind === 'hostbill' || kind === 'billmgr') {
-      const supportsTotp = kind === 'billmgr';
+      const supportsTotp = kind === 'billmgr' || kind === 'hostbill';
       const supplied =
         dto.baseUrl || dto.username || dto.password || (supportsTotp && dto.totpSecret);
       if (!supplied) return null;
@@ -406,6 +453,17 @@ export class ProvidersService {
         throw new BadRequestException('Provide both the Porkbun API key and secret key');
       }
       return this.crypto.encrypt(JSON.stringify({ apiKey, secretApiKey }));
+    }
+    if (kind === 'spaceship') {
+      // JSON { apiKey, apiSecret }. `token` carries the API key. Merge so a partial edit works.
+      if (!dto.token && !dto.secretKey) return null;
+      const base = this.decodeCredentials(existingEnc);
+      const apiKey = dto.token ?? base.apiKey;
+      const apiSecret = dto.secretKey ?? base.apiSecret;
+      if (!apiKey || !apiSecret) {
+        throw new BadRequestException('Provide both the Spaceship API key and secret');
+      }
+      return this.crypto.encrypt(JSON.stringify({ apiKey, apiSecret }));
     }
     if (kind === 'yandex') {
       // `token` carries the service-account authorized key (JSON); parse it into { keyId,
@@ -512,6 +570,12 @@ export class ProvidersService {
     if (!enc) return {};
     const raw = this.decryptRaw(enc);
     return raw ? parseAezaCredentials(raw) : {};
+  }
+
+  private decodeOpenRouterCredentials(enc?: Uint8Array | null): Partial<OpenRouterCredentials> {
+    if (!enc) return {};
+    const raw = this.decryptRaw(enc);
+    return raw ? parseOpenRouterCredentials(raw) : {};
   }
 
   private decryptRaw(enc: Uint8Array): string | null {

@@ -1,5 +1,5 @@
 import type { Provider } from '@infra/shared';
-import { IconExternalLink, IconLoader2 } from '@tabler/icons-react';
+import { IconExternalLink, IconLoader2, IconRefresh } from '@tabler/icons-react';
 import { useTranslation } from 'react-i18next';
 import { ProviderIcon } from '@/components/ProviderIcon';
 import { SortableTableHead } from '@/components/SortableTableHead';
@@ -16,6 +16,7 @@ import {
 } from '@/components/ui/table';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import type { SortState } from '@/hooks/useTableSort';
+import { cn } from '@/lib/utils';
 import { providerFavicon } from '@/utils/favicon';
 import { formatDate, formatMoney } from '@/utils/format';
 import type { ProviderSortKey } from './providersSort';
@@ -28,6 +29,7 @@ interface ProvidersTableProps {
   sort: SortState<ProviderSortKey> | null;
   onToggleSort: (key: ProviderSortKey) => void;
   onRowClick: (p: Provider) => void;
+  onSync: (uuid: string) => void;
 }
 
 export function ProvidersTable({
@@ -38,6 +40,7 @@ export function ProvidersTable({
   sort,
   onToggleSort,
   onRowClick,
+  onSync,
 }: ProvidersTableProps) {
   const { t } = useTranslation();
   const sortHead = (key: ProviderSortKey, label: string) => (
@@ -66,7 +69,10 @@ export function ProvidersTable({
               <TableRow
                 key={p.uuid}
                 tabIndex={0}
-                className="cursor-pointer focus-visible:bg-muted/50 focus-visible:outline-none"
+                className={cn(
+                  'cursor-pointer focus-visible:bg-muted/50 focus-visible:outline-none',
+                  !p.isEnabled && 'opacity-50',
+                )}
                 onClick={() => onRowClick(p)}
                 onKeyDown={(e) => {
                   if (e.key !== 'Enter' && e.key !== ' ') return;
@@ -76,14 +82,20 @@ export function ProvidersTable({
                 }}
               >
                 <TableCell className="py-3">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1.5">
                     <ProviderIcon
                       name={p.name}
                       src={providerFavicon(p)}
                       iconName={p.iconName}
                       iconBg={p.iconBg}
+                      size={24}
                     />
                     <span className="font-semibold">{p.name}</span>
+                    {!p.isEnabled && (
+                      <Badge variant="secondary" className="text-[10px] uppercase tracking-wide">
+                        {t('providers.badgeDisabled')}
+                      </Badge>
+                    )}
                     {p.loginUrl && (
                       <Button
                         asChild
@@ -115,25 +127,45 @@ export function ProvidersTable({
                 <TableCell>{p.servicesCount ?? 0}</TableCell>
                 <TableCell>{p.paymentsCount ?? 0}</TableCell>
                 <TableCell>
-                  {syncingUuid === p.uuid ? (
-                    <IconLoader2 className="size-4 animate-spin text-muted-foreground" />
-                  ) : p.lastSyncError ? (
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        {/* Soft fill: a solid destructive badge is too harsh here. */}
-                        <Badge className="border-transparent bg-destructive/15 text-[10px] text-destructive uppercase tracking-wide">
-                          {t('providers.syncError')}
-                        </Badge>
-                      </TooltipTrigger>
-                      {/* text-pretty, not text-balance: balance shortens lines under max-w,
-                          leaving an empty "squashed" box. */}
-                      <TooltipContent className="max-w-[420px] whitespace-normal text-pretty px-3 py-2">
-                        {p.lastSyncError}
-                      </TooltipContent>
-                    </Tooltip>
-                  ) : (
-                    <span className="text-muted-foreground">{formatDate(p.lastSyncAt)}</span>
-                  )}
+                  <div className="flex items-center gap-0.5">
+                    {p.lastSyncError ? (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Badge className="border-transparent bg-destructive/15 text-[10px] text-destructive uppercase tracking-wide">
+                            {t('providers.syncError')}
+                          </Badge>
+                        </TooltipTrigger>
+                        <TooltipContent className="max-w-[420px] whitespace-normal text-pretty px-3 py-2">
+                          {p.lastSyncError}
+                        </TooltipContent>
+                      </Tooltip>
+                    ) : (
+                      <span className="leading-none text-muted-foreground">
+                        {formatDate(p.lastSyncAt)}
+                      </span>
+                    )}
+                    {p.kind !== 'manual' && p.isEnabled && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-xs"
+                        className="cursor-pointer text-muted-foreground hover:text-foreground"
+                        disabled={syncingUuid === p.uuid}
+                        aria-label={t('providers.detail.syncNow')}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onSync(p.uuid);
+                        }}
+                        onKeyDown={(e) => e.stopPropagation()}
+                      >
+                        {syncingUuid === p.uuid ? (
+                          <IconLoader2 className="size-3.5 animate-spin" />
+                        ) : (
+                          <IconRefresh className="size-3.5" />
+                        )}
+                      </Button>
+                    )}
+                  </div>
                 </TableCell>
               </TableRow>
             ))}

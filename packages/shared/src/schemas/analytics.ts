@@ -60,7 +60,11 @@ export const byCurrencySchema = z.object({
   servicesCount: z.number().int().describe('Number of services'),
 });
 
-/** critical = balance won't cover an imminent charge; warning = very soon / underfunded. */
+/**
+ * critical = imminent (≤7d) charge that is uncovered — or has unknown coverage on a non-postpaid
+ * provider; warning = very soon / underfunded. Consumers tell "insufficient" from "unknown"
+ * via `covered`.
+ */
 export const billingSeveritySchema = z.enum(['critical', 'warning', 'ok']);
 export type BillingSeverity = z.infer<typeof billingSeveritySchema>;
 
@@ -75,15 +79,20 @@ export const upcomingBillingSchema = z.object({
   providerFaviconLink: z.string().describe('Provider favicon URL').nullable(),
   providerIconName: z.string().describe('Provider Tabler icon name').nullable(),
   providerIconBg: z.string().describe('Provider icon tile background').nullable(),
+  type: z.string().describe('Service type'),
   countryCode: z.string().describe('Service country code').nullable(),
+  marker: z.string().describe('Custom type marker').nullable(),
+  markerBg: z.string().describe('Custom type marker color').nullable(),
+  vendor: z.string().describe('LLM vendor slug').nullable(),
   nextBillingAt: isoDateSchema.describe('Next billing date'),
   cost: moneySchema.describe('Cost in service currency'),
   currency: currencySchema.describe('Service currency'),
   costBase: moneySchema.describe('Cost in base currency'),
-  daysUntil: z.number().int().describe('Days until billing'),
+  daysUntil: z.number().int().describe('Days until billing (0 = today)'),
   providerBalance: moneySchema.describe('Provider balance').nullable(),
   providerBalanceCurrency: currencySchema.describe('Provider balance currency').nullable(),
-  // null = provider exposes no balance (e.g. Hetzner) → coverage unknown.
+  // null = provider exposes no balance (manual kind, Hetzner-class connectors) → coverage
+  // unknown; unknown + due ≤7d on a non-postpaid provider is still critical.
   covered: z.boolean().describe('Balance covers charge').nullable(),
   severity: billingSeveritySchema.describe('Billing severity level'),
 });
@@ -105,22 +114,28 @@ export const balanceTopUpSchema = z.object({
 });
 export type BalanceTopUp = z.infer<typeof balanceTopUpSchema>;
 
-/** A dated charge already in the past — needs payment or a billing-date refresh. */
+/** A dated charge whose billing day is already behind us — needs payment or a billing-date refresh. */
 export const overdueBillingSchema = z.object({
   serviceUuid: uuidSchema.describe('Service UUID'),
   name: z.string().describe('Service name'),
+  providerUuid: uuidSchema.describe('Provider UUID'),
   providerName: z.string().describe('Provider name'),
   providerKind: z.string().describe('Provider connector kind'),
   providerLoginUrl: z.string().describe('Provider cabinet link').nullable(),
   providerFaviconLink: z.string().describe('Provider favicon URL').nullable(),
   providerIconName: z.string().describe('Provider Tabler icon name').nullable(),
   providerIconBg: z.string().describe('Provider icon tile background').nullable(),
+  type: z.string().describe('Service type'),
   countryCode: z.string().describe('Service country code').nullable(),
+  marker: z.string().describe('Custom type marker').nullable(),
+  markerBg: z.string().describe('Custom type marker color').nullable(),
+  vendor: z.string().describe('LLM vendor slug').nullable(),
   nextBillingAt: isoDateSchema.describe('Missed billing date'),
   cost: moneySchema.describe('Cost in service currency'),
   currency: currencySchema.describe('Service currency'),
   costBase: moneySchema.describe('Cost in base currency'),
-  daysOverdue: z.number().int().nonnegative().describe('Whole days past due (0 = earlier today)'),
+  // >= 1 by construction: the cut is the calendar day, a charge dated today is still upcoming.
+  daysOverdue: z.number().int().positive().describe('Whole calendar days past due (1 = yesterday)'),
 });
 
 /**
@@ -173,6 +188,9 @@ export const forecastPointSchema = z.object({
   month: z.string().describe('Month'),
   projected: moneySchema.describe('Projected cost (future months)'),
   actual: moneySchema.describe('Actual charges (past/current months)'),
+  estimated: moneySchema.describe(
+    'Tariff backfill for past/current months (providers without payment history, or force mode)',
+  ),
 });
 export type ForecastPoint = z.infer<typeof forecastPointSchema>;
 

@@ -1,15 +1,17 @@
 import { DEFAULT_PROJECT_UUID, type Period, type Service, type ServiceType } from '@infra/shared';
 import { IconPlus } from '@tabler/icons-react';
 import dayjs, { type ManipulateType } from 'dayjs';
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
+import { useSearchParams } from 'react-router-dom';
 import { apiErrorMessage } from '@/api/client';
 import { useCreatePayment } from '@/api/payments';
 import { useProjects } from '@/api/projects';
 import { useProviders } from '@/api/providers';
 import { useRates } from '@/api/rates';
 import {
+  parseServiceFilter,
   type ServiceFilter,
   useCreateService,
   useDeleteService,
@@ -21,15 +23,18 @@ import { PageHeader } from '@/components/PageHeader';
 import { Button } from '@/components/ui/button';
 import { useEnums } from '@/constants';
 import { useDisclosure } from '@/hooks/useDisclosure';
+import { isStaleUuid, usePersistedState } from '@/hooks/usePersistedState';
+import { useSelectedParam } from '@/hooks/useSelectedParam';
 import { sortRows, useTableSort } from '@/hooks/useTableSort';
 import { useCountryOptions } from '@/utils/countries';
 import { trimMoney } from '@/utils/format';
 import { buildRubMap } from '@/utils/money';
 import { notifyError, notifySuccess } from '@/utils/notify';
 import { BumpNextBillingDialog } from './BumpNextBillingDialog';
-import { type SForm, toIso } from './serviceForm';
 import { ServiceDetailModal } from './ServiceDetailModal';
 import { ServiceFormModal } from './ServiceFormModal';
+import { LOCATED_TYPES } from './ServiceTypeIcon';
+import { clientMetaFromForm, metaString, toIso, type SForm } from './serviceForm';
 import { ServicesFilters } from './ServicesFilters';
 import { SERVICE_SORT_KEYS, serviceSortAccessors } from './servicesSort';
 import { ServicesTable } from './ServicesTable';
@@ -58,13 +63,31 @@ export function ServicesPage() {
   const { data: projects } = useProjects();
   const { data: rates } = useRates();
   const { data: settings } = useSettings();
-  const [filter, setFilter] = useState<ServiceFilter>({});
+  const [searchParams] = useSearchParams();
+  // A dashboard or payments deep link (?selected=) must find its row, so that visit starts
+  // unfiltered in memory only: the saved filter stays in storage and returns on the next mount —
+  // unless a filter is changed here, in which case the on-screen filter is what gets saved.
+  const [filter, setFilter] = usePersistedState<ServiceFilter>(
+    'services-filter',
+    parseServiceFilter,
+    {},
+    !searchParams.has('selected'),
+  );
+  // A saved filter may name a provider/project deleted since. Adjust during render (React restarts
+  // before commit, as in PaymentsPage) so a blank Select over an empty table is never committed;
+  // while the lists are still loading the saved value is kept.
+  if (isStaleUuid(filter.providerUuid, providers))
+    setFilter((f) => ({ ...f, providerUuid: undefined }));
+  if (isStaleUuid(filter.projectUuid, projects))
+    setFilter((f) => ({ ...f, projectUuid: undefined }));
   const { data: services, isLoading } = useServices(filter);
   const create = useCreateService();
   const update = useUpdateService();
   const del = useDeleteService();
   const [createOpened, { open: openCreateModal, close: closeCreateModal }] = useDisclosure(false);
   const [detailUuid, setDetailUuid] = useState<string | null>(null);
+  // Types created in a combobox this session, before (or besides) a saved service carries them.
+  const [localTypes, setLocalTypes] = useState<string[]>([]);
   // Derived from the query so the detail modal always reflects the freshest list data.
   const selected = services?.find((s) => s.uuid === detailUuid) ?? null;
 
@@ -76,7 +99,7 @@ export function ServicesPage() {
   const defaultProjectUuid =
     projects?.find((p) => p.uuid === DEFAULT_PROJECT_UUID)?.uuid ?? projectOptions[0]?.value ?? '';
 
-  const { sort, toggleSort } = useTableSort('services-sort', SERVICE_SORT_KEYS);
+  const { sort, toggleSort, resetSort } = useTableSort('services-sort', SERVICE_SORT_KEYS);
   const sorted = sortRows(
     services,
     sort,
@@ -95,47 +118,107 @@ export function ServicesPage() {
       providerUuid: '',
       projectUuid: '',
       name: '',
+      description: '',
       type: 'vps',
       cost: '',
       currency: 'RUB',
       period: 'monthly',
       countryCode: '',
+      vendor: '',
+      marker: '',
+      markerBg: '',
       nextBillingAt: '',
     },
     mode: 'onSubmit',
   });
+  const formType = form.watch('type');
+
+  const formTypeInUse = Boolean(createOpened || detailUuid);
+
+  // Built-ins plus custom types still referenced by services / the open form / session creates.
+  const typeOptions = useMemo(() => {
+    const seen = new Set<string>(enums.serviceTypeOptions.map((o) => o.value));
+    const extras: { value: string; label: string }[] = [];
+    const add = (type: string) => {
+      if (!type || seen.has(type)) return;
+      seen.add(type);
+      extras.push({ value: type, label: enums.serviceTypeLabel(type) });
+    };
+    for (const s of services ?? []) add(s.type);
+    for (const type of localTypes) add(type);
+    // A saved type filter must stay selectable even when no service carries it right now.
+    if (filter.type) add(filter.type);
+    if (formTypeInUse) add(formType.trim());
+    return extras.length === 0
+      ? enums.serviceTypeOptions
+      : [...enums.serviceTypeOptions, ...extras];
+  }, [enums, services, localTypes, filter.type, formType, formTypeInUse]);
+
+  const rememberType = (type: string) => {
+    const next = type.trim();
+    if (!next) return;
+    setLocalTypes((prev) => (prev.includes(next) ? prev : [...prev, next]));
+  };
+
+  // Drop session-only types once nothing uses them (last service deleted / form moved away).
+  useEffect(() => {
+    const used = new Set((services ?? []).map((s) => s.type));
+    if (formTypeInUse) {
+      const open = formType.trim();
+      if (open) used.add(open);
+    }
+    setLocalTypes((prev) => {
+      const next = prev.filter((t) => used.has(t));
+      return next.length === prev.length ? prev : next;
+    });
+  }, [services, formType, formTypeInUse]);
 
   const openCreate = () => {
     form.reset({
       providerUuid: providerOptions[0]?.value ?? '',
       projectUuid: defaultProjectUuid,
       name: '',
+      description: '',
       type: 'vps',
       cost: '',
       currency: 'RUB',
       period: 'monthly',
       countryCode: '',
+      vendor: '',
+      marker: '',
+      markerBg: '',
       nextBillingAt: '',
     });
     openCreateModal();
   };
 
   const openDetail = (s: Service) => {
+    const meta = (s.meta ?? {}) as Record<string, unknown>;
+    const model = metaString(meta, 'model');
+    const vendorFromModel = model.split('/')[0]?.replace(/^~/, '').trim().toLowerCase() ?? '';
     form.reset({
       providerUuid: s.providerUuid,
       projectUuid: s.projectUuid,
       name: s.name,
+      description: s.description ?? '',
       type: s.type,
       cost: s.cost,
       currency: s.currency,
       period: s.period,
       countryCode: s.countryCode ?? '',
+      vendor: metaString(meta, 'vendor') || vendorFromModel,
+      marker: metaString(meta, 'marker'),
+      markerBg: metaString(meta, 'markerBg'),
       nextBillingAt: s.nextBillingAt ? dayjs(s.nextBillingAt).format('YYYY-MM-DD') : '',
     });
     setDetailUuid(s.uuid);
   };
+  useSelectedParam(services, openDetail);
 
   const submit = form.handleSubmit(async (v) => {
+    const meta = clientMetaFromForm(v);
+    const located = LOCATED_TYPES.has(v.type);
+    const countryCode = located ? v.countryCode || null : undefined;
     try {
       if (selected) {
         await update.mutateAsync({
@@ -144,12 +227,14 @@ export function ServicesPage() {
             providerUuid: v.providerUuid,
             projectUuid: v.projectUuid,
             name: v.name,
+            description: v.description.trim() || null,
             type: v.type as ServiceType,
             cost: trimMoney(v.cost),
             currency: v.currency,
             period: v.period as Period,
-            countryCode: v.countryCode || null,
+            ...(located ? { countryCode } : {}),
             nextBillingAt: toIso(v.nextBillingAt) ?? null,
+            meta,
           },
         });
         setDetailUuid(null);
@@ -159,13 +244,15 @@ export function ServicesPage() {
           providerUuid: v.providerUuid,
           projectUuid: v.projectUuid,
           name: v.name,
+          ...(v.description.trim() ? { description: v.description.trim() } : {}),
           type: v.type as ServiceType,
           cost: trimMoney(v.cost),
           currency: v.currency,
           period: v.period as Period,
-          countryCode: v.countryCode || undefined,
+          ...(located && countryCode ? { countryCode } : {}),
           nextBillingAt: toIso(v.nextBillingAt),
           isActive: true,
+          meta,
         });
         closeCreateModal();
         notifySuccess(t('services.createdToast'));
@@ -218,7 +305,9 @@ export function ServicesPage() {
           // Stored in the DB, so it is fixed in the UI language active at creation time.
           description: t('services.bumpDescription'),
           paymentDate: toIso(dayjs().format('YYYY-MM-DD'))!,
-          type: 'charge',
+          // `topup`, not `charge`: analytics treats charges as per-service detail of a top-up and
+          // skips them for providers that have top-ups — a manual renewal would vanish from spend.
+          type: 'topup',
         });
       }
       await update.mutateAsync({ uuid: s.uuid, dto: { nextBillingAt: bumpedDate(s) } });
@@ -248,7 +337,12 @@ export function ServicesPage() {
         setFilter={setFilter}
         providerOptions={providerOptions}
         projectOptions={projectOptions}
-        typeOptions={enums.serviceTypeOptions}
+        typeOptions={typeOptions}
+        sortActive={sort !== null}
+        onReset={() => {
+          setFilter({});
+          resetSort();
+        }}
       />
 
       <ServicesTable
@@ -270,10 +364,11 @@ export function ServicesPage() {
         isPending={create.isPending}
         providerOptions={providerOptions}
         projectOptions={projectOptions}
-        typeOptions={enums.serviceTypeOptions}
+        typeOptions={typeOptions}
         periodOptions={enums.periodOptions}
         currencyOptions={enums.currencyOptions}
         countryOptions={countryOptions}
+        onTypeCreated={rememberType}
         onSubmit={submit}
         onClose={closeCreateModal}
       />
@@ -283,12 +378,13 @@ export function ServicesPage() {
         form={form}
         providerOptions={providerOptions}
         projectOptions={projectOptions}
-        typeOptions={enums.serviceTypeOptions}
+        typeOptions={typeOptions}
         periodOptions={enums.periodOptions}
         currencyOptions={enums.currencyOptions}
         countryOptions={countryOptions}
         isSaving={update.isPending && !togglingActive}
         isToggling={togglingActive}
+        onTypeCreated={rememberType}
         onSubmit={submit}
         onToggleActive={toggleActive}
         onDelete={doDelete}

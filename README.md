@@ -16,15 +16,15 @@
 ## Возможности
 
 - **Провайдеры с API:** Timeweb Cloud, Hetzner Cloud, Hostkey (InvAPI), netcup, HostBill,
-  ISPsystem BILLmanager, Selectel, 4VPS.SU, Netlen, Beget Cloud, Porkbun, Vultr, Linode, Aeza,
-  VDSina, Cloudflare, StormWall, Yandex Cloud, Double Servers. Плюс **Manual** — провайдеры без
-  API ведутся руками.
+  ISPsystem BILLmanager, Selectel, 4VPS.SU, Netlen, Beget Cloud, Porkbun, Spaceship, Vultr,
+  Linode, Aeza, VDSina, Cloudflare, StormWall, Yandex Cloud, Double Servers, OpenRouter. Плюс
+  **Manual** — провайдеры без API ведутся руками.
 - **Автосинк** (по расписанию + кнопкой): баланс + валюта аккаунта, список серверов/услуг, даты
   следующих списаний; история баланса по дням (снапшоты).
 - **Импорт платежей** там, где API отдаёт реестр: пополнения и списания (BILLmanager, Netlen,
   Vultr, Aeza, VDSina, Double Servers), пополнения и счета (Linode), оплаченные счета (HostBill),
-  потребление (Selectel, Yandex Cloud), история биллинга (Cloudflare, best-effort). Ручные
-  платежи — в журнале.
+  потребление (Selectel, Yandex Cloud, OpenRouter), история биллинга (Cloudflare, best-effort).
+  Ручные платежи — в журнале.
 - **Аналитика:** месячные/годовые расходы, разрезы по провайдеру / стране / типу / валюте, прогноз
   по будущим списаниям, ближайшие списания с подсветкой критичности.
 - **Мультивалютность:** суммы в своей валюте, конвертация к базовой; курсы ЦБ РФ или ручные.
@@ -39,7 +39,7 @@
 
 ## Стек
 
-- **Backend:** NestJS 11 (Node 22) · Prisma 7 · PostgreSQL 17 · zod (`nestjs-zod`) · axios · grammY
+- **Backend:** NestJS 11 (Node 22) · Prisma 7 · PostgreSQL 18 · zod (`nestjs-zod`) · axios · grammY
 - **Frontend:** Vite · React 19 · shadcn/ui · Tailwind CSS v4 · RemoCN (Remotion) · TanStack Query · axios
 - **Монорепо:** npm-workspaces — `apps/backend`, `apps/frontend`, `packages/shared` (общие zod-схемы)
 - **Деплой:** единый Docker-образ (бэкенд раздаёт API + собранный SPA) + отдельный Postgres
@@ -141,6 +141,32 @@ cd /opt/infra-billing && docker compose -f docker-compose-prod.yml pull \
 docker image prune
 ```
 
+#### PostgreSQL 17 → 18 (с 0.44.0, не обязательно, но рекомендуется)
+
+С 0.44.0 compose в репозитории использует `postgres:18` и монтирует том в `/var/lib/postgresql`
+(раньше — `/var/lib/postgresql/data`). **Переходить не обязательно**: приложение работает и с
+PostgreSQL 17 — достаточно не трогать свой `docker-compose.yml` и обновлять только образ панели
+(`docker compose pull`). Но обновиться рекомендуется, чтобы не отставать от поддерживаемых версий
+и от compose-файла в репозитории. Файлы 17-й версии новый сервер сам не подхватит — данные надо
+обновить на месте, это делает образ `pgautoupgrade`:
+
+```bash
+# 1. Дамп на всякий случай
+docker compose exec -T infra-billing-db sh -c 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc' > infra_billing-pg17.dump
+
+# 2. Скачать новый compose (в нём уже postgres:18 и новый путь тома)
+curl -fsSL -o docker-compose.yml https://raw.githubusercontent.com/Artisan-memory/infra-billing/main/docker-compose-prod.yml
+
+# 3. Временно поставить у сервиса infra-billing-db образ pgautoupgrade и прогнать апгрейд
+sed -i 's#image: postgres:18.*#image: pgautoupgrade/pgautoupgrade:18.6-trixie#' docker-compose.yml
+docker compose down && docker compose up -d infra-billing-db && docker compose logs -f infra-billing-db
+#    (ждать «database system is ready to accept connections» после «End of reindexing»)
+
+# 4. Вернуть официальный образ и поднять всё
+sed -i 's#image: pgautoupgrade/pgautoupgrade:.*#image: postgres:18.6#' docker-compose.yml
+docker compose down && docker compose pull && docker compose up -d
+```
+
 ---
 
 ## Вход в систему
@@ -187,6 +213,7 @@ docker compose exec infra-billing cli reset-admin --yes
 | `DATABASE_URL` | Строка подключения Prisma (хост = `infra-billing-db` в docker, `127.0.0.1` локально) |
 | `ENCRYPTION_KEY` | **Обязательно.** AES-256-GCM ключ для секретов в БД — токены провайдеров и секрет сессии (32 байта base64) |
 | `DOCS` | `true` — включить Swagger UI на `/api/docs` (публично при включении). Default `false` |
+| `COOKIE_SECURE` | `Secure`-флаг сессионной куки. Не задан — следует за `NODE_ENV` (в prod включён). `false` — только для http-деплоя за защищённым транспортом (Tailscale/NetBird); passkeys всё равно требуют https |
 
 ---
 
@@ -223,6 +250,11 @@ curl -H "Authorization: Bearer ib_…" https://infra-billing/api/providers
   (страна определяется по дата-центру).
 - **HostBill** — base URL вашей инсталляции (напр. `https://secure.veesp.com/api`) + email + пароль.
 - **ISP BILLmanager** — base URL (`https://.../billmgr`) + логин + пароль (+ TOTP-секрет, если 2FA по OTP).
+  Если хостер закрыл вход в API капчей (например, FirstVDS), панель сама переключается на
+  stateless-авторизацию `authinfo`. Для неё добавьте IP сервера панели в список разрешённых —
+  у FirstVDS это «Доступ к API» в настройках биллинга — иначе синк упадёт с ошибкой
+  `forbidden_auth_method`. 2FA в этом режиме не работает (нет сессии для подтверждения кода) —
+  отключите её у такого хостера.
 - **Selectel** — номер аккаунта + сервисный пользователь IAM (имя + пароль) с ролью на биллинг;
   опц. имя проекта Облачной платформы для облачных серверов.
 - **4VPS.SU** — API-ключ (ЛК → раздел API) + id панели (обычно `1`).
@@ -236,6 +268,9 @@ curl -H "Authorization: Bearer ib_…" https://infra-billing/api/providers
 - **Porkbun** — API key + Secret API key (Account → API Access; ключ нужно включить на каждом домене).
   Регистратор доменов: тянет домены (`type=domain`, дата продления = дата истечения), баланс (USD)
   и цену продления по TLD. Истории платежей в API нет.
+- **Spaceship** — API key + secret (API manager). Регистратор доменов: тянет домены (`type=domain`,
+  дата продления = дата истечения). Баланса, цен продления и истории платежей в API нет — цену
+  домена можно проставить руками.
 - **Vultr** — API-ключ (Account → API). Если на ключе включён Access Control — добавьте IP сервера
   в whitelist, иначе запросы отклоняются (403). Тянет баланс (USD), серверы (цена из тарифа) и
   реестр billing-history (пополнения и списания); страна определяется по региону.
@@ -269,6 +304,15 @@ curl -H "Authorization: Bearer ib_…" https://infra-billing/api/providers
   включена 2FA по приложению. Тянет баланс (EUR), VPS (цена, дата продления `expires_at`) и
   историю: пополнения (`/api/billing/history`) + списания по серверам (`/api/servers/{id}/history`).
   Публичного API-токена нет — синк логинится в панель.
+- **OpenRouter** — **Management API key** (openrouter.ai → Settings → Management Keys). Обычный
+  inference-ключ не подойдёт: синк проверяет его через `/key` и отклоняет с явной ошибкой.
+  LLM-агрегатор, серверов у него нет — панель заводит по услуге (`type=llm`) на каждую модель,
+  по которой был трафик. Цена услуги — фактический расход: за текущий месяц, а пока в нём трат
+  нет — за всё окно `/activity` (последние ~30 суток UTC, посуточно). Оттуда же импортируются
+  списания — по записи на «модель + день»; пополнений в API нет, поэтому в журнале только расход.
+  Баланс — остаток купленных кредитов (`/credits`: пополнено − потрачено, USD). Названия моделей
+  подставляются из каталога `/models` (тумблер «Имена из каталога» в форме; выключить — останутся
+  слаги вида `anthropic/claude-sonnet-5`), вендор берётся из слага и показывается иконкой.
 - **Manual** — без API, всё вводится руками.
 
 ---
@@ -301,26 +345,29 @@ cookie на реверс-прокси, имя и значение cookie. Вве
 
 ## Локальная разработка
 
+Команды — через [Task](https://taskfile.dev/installation) (`brew install go-task`), `task` без
+аргументов покажет список.
+
 ```bash
-make install            # npm ci
-make db-up              # поднять только Postgres (127.0.0.1:5432)
+task install            # npm ci
+task db-up              # поднять только Postgres (127.0.0.1:5432)
 
 # .env для локального запуска вне docker — DATABASE_URL на 127.0.0.1:
 #   DATABASE_URL="postgresql://infra:infra@127.0.0.1:5432/infra_billing?schema=public"
 
-make migrate            # prisma migrate dev
-make dev                # backend :8080 + frontend :5173 (Vite проксирует /api)
+task migrate            # prisma migrate dev
+task dev                # backend :8080 + frontend :5173 (Vite проксирует /api)
 ```
 
-Открыть <http://localhost:5173>. `make migrate`/`make studio` сами ходят в БД на `127.0.0.1`
-(см. `LOCAL_DATABASE_URL` в Makefile). Локальный билд образа: `make docker-build` + `make docker-up`
-(использует `docker-compose.yml` со сборкой из исходников).
+Открыть <http://localhost:5173>. `task migrate`/`task studio` сами ходят в БД на `127.0.0.1`
+(см. `LOCAL_DATABASE_URL` в `Taskfile.yml`). Локальный билд образа: `task docker-build` +
+`task docker-up` (использует `docker-compose.yml` со сборкой из исходников).
 
-Превью дашборда в шапке README обновляются так (нужны запущенные `make dev` и креды владельца):
+Превью дашборда в шапке README обновляются так (нужны запущенные `task dev` и креды владельца):
 
 ```bash
 # один раз, если нет системного Chrome: npx playwright install chromium
-CAPTURE_USER=admin CAPTURE_PASSWORD='…' make docs-screenshot
+CAPTURE_USER=admin CAPTURE_PASSWORD='…' task docs-screenshot
 ```
 
 Скрипт пишет `docs/screenshot-{dark,light}.webp` (Retina → рамка → WebP).

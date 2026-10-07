@@ -1,3 +1,4 @@
+import { IconExternalLink } from '@tabler/icons-react';
 import {
   createContext,
   useContext,
@@ -6,17 +7,21 @@ import {
   useState,
   type ReactNode,
 } from 'react';
+import { useTranslation } from 'react-i18next';
+import { Link } from 'react-router-dom';
 import { ProviderIcon } from '@/components/ProviderIcon';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { providerFavicon } from '@/utils/favicon';
 import { countryFlag } from '@/utils/format';
-import { countryBadgeStyle, providerBadgeStyle } from './badgeTints';
+import { LOCATED_TYPES, ServiceTypeIcon } from '@/pages/services/ServiceTypeIcon';
+import { colorBadgeStyle, countryBadgeStyle, providerBadgeStyle } from './badgeTints';
 import { createLayoutGate } from './layoutMeasure';
 
 export function ProviderBadge({
   name,
   kind,
+  uuid,
   faviconLink,
   loginUrl,
   iconName,
@@ -24,40 +29,139 @@ export function ProviderBadge({
 }: {
   name: string;
   kind?: string | null;
+  uuid?: string | null;
   faviconLink?: string | null;
   loginUrl?: string | null;
   iconName?: string | null;
   iconBg?: string | null;
 }) {
   const tint = providerBadgeStyle(kind);
+  const icon = (
+    <ProviderIcon
+      name={name}
+      src={providerFavicon(
+        uuid ? { uuid, faviconLink: faviconLink ?? null, loginUrl: loginUrl ?? null } : null,
+      )}
+      iconName={iconName}
+      iconBg={iconBg}
+      size={16}
+    />
+  );
+  const label = (
+    <span className={cn(uuid && 'group-hover/chip:underline')} style={{ color: tint.color }}>
+      {name}
+    </span>
+  );
   return (
     <Badge
       variant="outline"
       className="gap-1.5 border py-0.5 pr-2 pl-1 font-normal shadow-none"
       style={tint}
     >
-      <ProviderIcon
-        name={name}
-        src={providerFavicon({ faviconLink: faviconLink ?? null, loginUrl: loginUrl ?? null })}
-        iconName={iconName}
-        iconBg={iconBg}
-        size={16}
-      />
-      <span style={{ color: tint.color }}>{name}</span>
+      {uuid ? (
+        // Anchors don't nest and the cabinet link below is a real <a>, hence the chip
+        // itself stays plain and in-app navigation hangs off the icon + name.
+        <Link to={`/providers?selected=${uuid}`} className="group/chip flex items-center gap-1.5">
+          {icon}
+          {label}
+        </Link>
+      ) : (
+        <>
+          {icon}
+          {label}
+        </>
+      )}
+      {loginUrl && (
+        <a
+          href={loginUrl}
+          target="_blank"
+          rel="noreferrer"
+          aria-label={loginUrl}
+          className="inline-flex shrink-0 opacity-60 transition-opacity hover:opacity-100"
+          style={{ color: tint.color }}
+        >
+          <IconExternalLink className="size-3" />
+        </a>
+      )}
     </Badge>
   );
 }
 
-export function ServiceBadge({ countryCode, name }: { countryCode?: string | null; name: string }) {
-  const flag = countryFlag(countryCode);
+export function ServiceBadge({
+  name,
+  uuid,
+  type,
+  countryCode,
+  marker,
+  markerBg,
+  vendor,
+}: {
+  name: string;
+  uuid?: string | null;
+  type?: string | null;
+  countryCode?: string | null;
+  marker?: string | null;
+  markerBg?: string | null;
+  vendor?: string | null;
+}) {
+  const located = Boolean(type && LOCATED_TYPES.has(type));
+  const flag = located ? countryFlag(countryCode) : null;
+  const tint = located ? countryBadgeStyle(countryCode) : colorBadgeStyle(markerBg);
+  const content = (
+    <>
+      {flag ? (
+        <span className="inline-flex size-4 shrink-0 items-center justify-center text-sm leading-none">
+          {flag}
+        </span>
+      ) : (
+        <ServiceTypeIcon
+          type={type ?? 'other'}
+          model={vendor}
+          marker={marker}
+          markerBg={markerBg}
+          size={16}
+        />
+      )}
+      <span
+        className={cn('leading-none', uuid && 'group-hover/chip:underline')}
+        style={{ color: tint.color }}
+      >
+        {name}
+      </span>
+    </>
+  );
+  const className =
+    'items-center gap-1.5 border py-0.5 pr-2 pl-1 font-normal shadow-none leading-none';
+  if (!uuid) {
+    return (
+      <Badge variant="outline" className={className} style={tint}>
+        {content}
+      </Badge>
+    );
+  }
   return (
-    <Badge
-      variant="outline"
-      className="gap-1 border font-medium"
-      style={countryBadgeStyle(countryCode)}
-    >
-      {flag ? <span className="text-sm leading-none">{flag}</span> : null}
-      {name}
+    <Badge asChild variant="outline" className={cn(className, 'group/chip')} style={tint}>
+      <Link to={`/services?selected=${uuid}`}>{content}</Link>
+    </Badge>
+  );
+}
+
+// Coverage → badge tint: red only when the balance definitely won't cover; covered/unknown
+// stay muted. Shared by the 14-day list and the critical plate so the two can't diverge.
+function balanceBadgeClass(covered: boolean | null): string {
+  if (covered === false) return 'border-transparent bg-destructive/15 text-destructive';
+  return 'border-foreground/10 bg-muted text-muted-foreground';
+}
+
+export function CoverageBadge({ covered }: { covered: boolean | null }) {
+  const { t } = useTranslation();
+  return (
+    <Badge className={cn('font-normal', balanceBadgeClass(covered))}>
+      {covered === false
+        ? t('dashboard.upcoming.insufficientBalance')
+        : covered === true
+          ? t('dashboard.upcoming.balanceOk')
+          : t('dashboard.upcoming.balanceUnknown')}
     </Badge>
   );
 }

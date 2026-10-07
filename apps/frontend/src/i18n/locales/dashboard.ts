@@ -10,7 +10,7 @@ export const dashboard = {
       totalSpent: 'Total spent',
     },
     critical: {
-      title: "Critical: won't cover the charge in ≤7 days",
+      title: 'Critical: balance may not cover the charge in ≤7 days',
       serviceLead: 'Service',
       charge: '{{amount}} · {{when}}',
       balance: ' · balance {{amount}}',
@@ -36,6 +36,7 @@ export const dashboard = {
       forecast: 'Spend by month ({{base}})',
       forecastSeries: 'Forecast',
       actualSeries: 'Actual',
+      estimatedSeries: 'Estimated',
     },
     byProject: {
       title: 'Spending by project ({{base}})',
@@ -87,7 +88,7 @@ export const dashboard = {
       totalSpent: 'Всего потрачено',
     },
     critical: {
-      title: 'Критично: не хватит на списание в ≤7 дней',
+      title: 'Критично: баланс может не покрыть списание в ≤7 дней',
       serviceLead: 'Сервис',
       charge: '{{amount}} · {{when}}',
       balance: ' · баланс {{amount}}',
@@ -113,6 +114,7 @@ export const dashboard = {
       forecast: 'Расходы по месяцам ({{base}})',
       forecastSeries: 'Прогноз',
       actualSeries: 'Списано',
+      estimatedSeries: 'Оценка',
     },
     byProject: {
       title: 'Расходы по проектам ({{base}})',

@@ -14,6 +14,7 @@ export const providers = {
       sync: 'Sync',
     },
     syncError: 'error',
+    badgeDisabled: 'disabled',
     balanceHistory: {
       tooltip: 'Balance history',
       title: 'Balance history · {{name}}',
@@ -40,6 +41,10 @@ export const providers = {
       syncNow: 'Sync now',
       historyTitle: 'Balance history',
       openLk: 'Open control panel',
+      enable: 'Enable',
+      disable: 'Disable',
+      syncDisabled:
+        'Sync is off — the provider is disabled. Services and balance stay as they are.',
     },
     field: {
       name: 'Name',
@@ -78,6 +83,11 @@ export const providers = {
         'Cloudflare → My Profile → API Tokens → create a token with Registrar: Domains:Read and Billing:Read',
       cloudflareAccountIdDesc: 'Cloudflare account ID (dashboard URL or GET /accounts)',
       apiTokenDescStormwall: 'StormWall personal cabinet → API key, sent as the x-api-key header',
+      managementKey: 'Management API key',
+      apiTokenDescOpenrouter:
+        'Go to openrouter.ai. Open "Home" → "Management Keys" → "New Key", enter any name, then "Create". Copy the key and paste it below.',
+      useCatalogNames: 'Use catalog names',
+      useCatalogNamesDesc: 'Replace model slugs with names from the OpenRouter catalog',
       yandexKey: 'Authorized key (JSON)',
       yandexKeySetup: 'Setup:',
       yandexKeyStep1:
@@ -115,6 +125,9 @@ export const providers = {
       porkbunApiKey: 'API key',
       porkbunApiKeyDesc: 'Porkbun → Account → API Access → create an API key',
       porkbunSecretKey: 'Secret API key',
+      spaceshipApiKey: 'API key',
+      spaceshipApiKeyDesc: 'Spaceship → API manager → New API key',
+      spaceshipApiSecret: 'API secret',
       loginUrl: 'Account link',
       loginUrlDesc: "Also used to fetch the provider's favicon",
       isPostpaid: 'Invoice-billed (postpaid)',
@@ -131,6 +144,7 @@ export const providers = {
       doubleserversCreds: 'Enter the Double Servers email and password',
       vultrToken: 'Enter the Vultr API key',
       porkbunCreds: 'Enter the Porkbun API key and secret key',
+      spaceshipCreds: 'Enter the Spaceship API key and secret',
       linodeToken: 'Enter the Linode API token',
       aezaToken: 'Enter the Aeza API key',
       hostkeyToken: 'Enter the Hostkey InvAPI key',
@@ -138,6 +152,7 @@ export const providers = {
       vdsinaToken: 'Enter the VDSina API token',
       cloudflareCreds: 'Enter the Cloudflare account ID and API token',
       stormwallToken: 'Enter the StormWall API key',
+      openrouterToken: 'Enter the OpenRouter Management API key',
       yandexKey: 'Paste the Yandex Cloud service account authorized key (JSON)',
     },
     netcup: {
@@ -154,6 +169,8 @@ export const providers = {
     },
     created: 'Provider created',
     updated: 'Provider updated',
+    enabledToast: 'Provider "{{name}}" enabled',
+    disabledToast: 'Provider "{{name}}" disabled — it will not be synced',
     syncedAll: 'Providers synced: {{count}}',
     syncedMixed: 'Sync: {{ok}} ok, {{failed}} failed',
     syncedOne: 'Sync: services {{count}}',
@@ -174,6 +191,7 @@ export const providers = {
       sync: 'Синхронизация',
     },
     syncError: 'ошибка',
+    badgeDisabled: 'отключён',
     balanceHistory: {
       tooltip: 'История баланса',
       title: 'История баланса · {{name}}',
@@ -200,6 +218,10 @@ export const providers = {
       syncNow: 'Синхронизировать',
       historyTitle: 'История баланса',
       openLk: 'Открыть ЛК',
+      enable: 'Включить',
+      disable: 'Отключить',
+      syncDisabled:
+        'Синхронизация выключена — провайдер отключён. Сервисы и баланс остаются как есть.',
     },
     field: {
       name: 'Имя',
@@ -241,6 +263,11 @@ export const providers = {
       cloudflareAccountIdDesc: 'Account ID аккаунта Cloudflare (из URL дашборда или GET /accounts)',
       apiTokenDescStormwall:
         'Личный кабинет StormWall → API-ключ (передаётся в заголовке x-api-key)',
+      managementKey: 'Management API-ключ',
+      apiTokenDescOpenrouter:
+        'Зайдите на openrouter.ai. Откройте "Home" → "Management Keys" → "New Key", введите любое имя, затем "Create". Скопируйте ключ и вставьте его ниже.',
+      useCatalogNames: 'Имена из каталога',
+      useCatalogNamesDesc: 'Подставлять названия моделей вместо slug',
       yandexKey: 'Авторизованный ключ (JSON)',
       yandexKeySetup: 'Настройка:',
       yandexKeyStep1:
@@ -278,6 +305,9 @@ export const providers = {
       porkbunApiKey: 'API-ключ',
       porkbunApiKeyDesc: 'Porkbun → Account → API Access → создать API-ключ',
       porkbunSecretKey: 'Секретный API-ключ',
+      spaceshipApiKey: 'API-ключ',
+      spaceshipApiKeyDesc: 'Spaceship → API manager → создать API-ключ',
+      spaceshipApiSecret: 'API-секрет',
       loginUrl: 'Ссылка на ЛК',
       loginUrlDesc: 'Также используется для иконки (фавикона) провайдера',
       isPostpaid: 'Оплата по инвойсам (постоплата)',
@@ -294,6 +324,7 @@ export const providers = {
       doubleserversCreds: 'Укажите email и пароль Double Servers',
       vultrToken: 'Укажите API-ключ Vultr',
       porkbunCreds: 'Укажите API-ключ и секретный ключ Porkbun',
+      spaceshipCreds: 'Укажите API-ключ и секрет Spaceship',
       linodeToken: 'Укажите API-токен Linode',
       aezaToken: 'Укажите API-ключ Aeza',
       hostkeyToken: 'Укажите API-ключ Hostkey InvAPI',
@@ -301,6 +332,7 @@ export const providers = {
       vdsinaToken: 'Укажите API-токен VDSina',
       cloudflareCreds: 'Укажите account ID и API-токен Cloudflare',
       stormwallToken: 'Укажите API-ключ StormWall',
+      openrouterToken: 'Укажите Management API-ключ OpenRouter',
       yandexKey: 'Вставьте авторизованный ключ сервисного аккаунта Yandex Cloud (JSON)',
     },
     netcup: {
@@ -317,6 +349,8 @@ export const providers = {
     },
     created: 'Провайдер создан',
     updated: 'Провайдер обновлён',
+    enabledToast: 'Провайдер «{{name}}» включён',
+    disabledToast: 'Провайдер «{{name}}» отключён — синхронизироваться не будет',
     syncedAll: 'Синхронизировано провайдеров: {{count}}',
     syncedMixed: 'Синхронизация: {{ok}} ок, {{failed}} с ошибкой',
     syncedOne: 'Синхронизация: сервисов {{count}}',

@@ -4,6 +4,20 @@ import { Period } from '@infra/shared';
 const HOURS_PER_MONTH = 730;
 const DAYS_PER_MONTH = new Decimal(HOURS_PER_MONTH).div(24); // ≈30.42, consistent with hourly
 
+/** Money field from a provider API where absent/null means zero. */
+export function toDecimal(value: Decimal.Value | null | undefined): Decimal {
+  return new Decimal(value ?? 0);
+}
+
+/**
+ * daily/hourly = metered auto-debit from a prepaid balance: the provider drains the account
+ * continuously, so there is no dated charge to prepare for or to miss. Such services stay out of
+ * the upcoming/overdue lists and their provider is watched via balance runway instead.
+ */
+export function isMeteredPeriod(period: Period): boolean {
+  return period === 'daily' || period === 'hourly';
+}
+
 /**
  * Normalize a per-period cost to a monthly cost (same currency, no FX).
  * onetime → 0 (capital expense, excluded from recurring totals).

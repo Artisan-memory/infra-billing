@@ -1,5 +1,6 @@
 import { useTranslation } from 'react-i18next';
 import { PageHeader } from '@/components/PageHeader';
+import { ForecastSettingsCard } from './ForecastSettingsCard';
 import { GeneralSettingsCard } from './GeneralSettingsCard';
 import { RatesCard } from './RatesCard';
 import { RemnawaveMigrationButton } from './RemnawaveMigrationModal';
@@ -15,6 +16,8 @@ export function SettingsPage() {
         <GeneralSettingsCard />
         <TelegramSettingsCard />
       </div>
+
+      <ForecastSettingsCard />
 
       <RatesCard />
 

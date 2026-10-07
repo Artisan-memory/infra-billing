@@ -6,6 +6,8 @@ type BalanceRunway = AnalyticsSummary['balanceRunway'][number];
 
 export const EMOJI = {
   lowBalance: '<tg-emoji emoji-id="5258474669769497337">❗</tg-emoji>',
+  // Deliberately not the low-balance ❗ — the two alerts must be distinguishable in the feed.
+  unknownCoverage: '<tg-emoji emoji-id="5258503720928288433">ℹ</tg-emoji>',
   upcoming: '<tg-emoji emoji-id="5258105663359294787">🗓</tg-emoji>',
   syncError: '<tg-emoji emoji-id="5260342697075416641">❌</tg-emoji>',
   test: '<tg-emoji emoji-id="5260726538302660868">✅</tg-emoji>',
@@ -61,8 +63,8 @@ function runwayLabel(days: number): string {
   return `~${days} ${ruDays(days)}`;
 }
 
+// daysOverdue is >= 1 by contract (a charge dated today is upcoming, not overdue), so no "today" case.
 function agoLabelRu(daysOverdue: number): string {
-  if (daysOverdue <= 0) return 'сегодня';
   if (daysOverdue === 1) return 'вчера';
   return `${daysOverdue} ${ruDays(daysOverdue)} назад`;
 }
@@ -75,6 +77,16 @@ export function lowBalanceMessage(ub: UpcomingBilling): string {
     `${EMOJI.service} ${esc(ub.name)}\n\n` +
     `${EMOJI.clock} Списание <code>${esc(ub.cost)} ${esc(ub.currency)}</code> ${whenLabel(ub.daysUntil)} — баланса не хватит.\n` +
     `${EMOJI.balance} Баланс: <code>${esc(ub.providerBalance ?? '0')} ${esc(ub.providerBalanceCurrency ?? '')}</code>`
+  );
+}
+
+/** Unknown coverage: an imminent charge on a provider whose balance the panel can't see. */
+export function unknownCoverageMessage(ub: UpcomingBilling): string {
+  return (
+    `${EMOJI.unknownCoverage} <b>Баланс неизвестен</b>\n\n` +
+    `${EMOJI.provider} ${providerLink(ub.providerName, ub.providerLoginUrl)}\n` +
+    `${EMOJI.service} ${esc(ub.name)}\n\n` +
+    `${EMOJI.clock} Списание <code>${esc(ub.cost)} ${esc(ub.currency)}</code> ${whenLabel(ub.daysUntil)} — панель не видит баланс, проверь покрытие в ЛК.`
   );
 }
 
@@ -140,7 +152,11 @@ export function sampleMessages(): string[] {
     providerFaviconLink: null,
     providerIconName: null,
     providerIconBg: null,
+    type: 'vps',
     countryCode: 'RU',
+    marker: null,
+    markerBg: null,
+    vendor: null,
     nextBillingAt: `${inTwoDays}T00:00:00.000Z`,
     cost: '500.00',
     currency: 'RUB',
@@ -151,17 +167,28 @@ export function sampleMessages(): string[] {
     covered: false,
     severity: 'critical',
   };
+  const sampleUnknown: UpcomingBilling = {
+    ...sample,
+    covered: null,
+    providerBalance: null,
+    providerBalanceCurrency: null,
+  };
   const fiveDaysAgo = new Date(Date.now() - 5 * 86_400_000).toISOString().slice(0, 10);
   const sampleOverdue: OverdueBilling = {
     serviceUuid: '00000000-0000-0000-0000-000000000000',
     name: 'demo-vps',
+    providerUuid: '00000000-0000-0000-0000-000000000000',
     providerName: 'Тестовый провайдер',
     providerKind: 'manual',
     providerLoginUrl: 'https://example.com',
     providerFaviconLink: null,
     providerIconName: null,
     providerIconBg: null,
+    type: 'vps',
     countryCode: 'RU',
+    marker: null,
+    markerBg: null,
+    vendor: null,
     nextBillingAt: `${fiveDaysAgo}T00:00:00.000Z`,
     cost: '500.00',
     currency: 'RUB',
@@ -188,6 +215,7 @@ export function sampleMessages(): string[] {
     `${EMOJI.samples} <b>Проверка уведомлений</b> — примеры всех типов ниже:`,
     overdueBillingMessage(sampleOverdue),
     lowBalanceMessage(sample),
+    unknownCoverageMessage(sampleUnknown),
     lowRunwayMessage(sampleRunway),
     upcomingBillingMessage(sample, inTwoDays),
     syncErrorMessage('Тестовый провайдер', 'HTTP 401: неверный API-токен', 'https://example.com'),

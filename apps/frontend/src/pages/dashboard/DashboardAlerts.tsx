@@ -9,6 +9,7 @@ import { formatMoney } from '@/utils/format';
 import {
   AlertChargeGrid,
   AlertChargeRow,
+  CoverageBadge,
   ProviderBadge,
   ServiceBadge,
   clusterIsWrapped,
@@ -36,6 +37,7 @@ function RunwayChargeRows({ rows }: { rows: RunwayRow[] }) {
               <ProviderBadge
                 name={r.providerName}
                 kind={r.providerKind}
+                uuid={r.providerUuid}
                 faviconLink={r.providerFaviconLink}
                 loginUrl={r.providerLoginUrl}
                 iconName={r.providerIconName}
@@ -301,7 +303,7 @@ export function DashboardAlerts({ overdue, upcoming, runway, topUps }: Dashboard
   const criticalTopUps = topUps.filter((u) =>
     critical.some((b) => b.providerUuid === u.providerUuid),
   );
-  const pairsKey = `${critical.map((b) => `${b.serviceUuid}:${b.name}:${b.cost}:${b.providerName}`).join('|')}:${criticalTopUps.map((u) => `${u.providerUuid}:${u.amount}:${u.providerName}`).join('|')}:${runwayCritical.map((r) => `${r.providerUuid}:${r.daysLeft}:${r.balance}`).join('|')}:${runwayWarning.map((r) => `${r.providerUuid}:${r.severity}:${r.daysLeft}`).join('|')}:${t('dashboard.critical.title')}`;
+  const pairsKey = `${critical.map((b) => `${b.serviceUuid}:${b.name}:${b.cost}:${b.providerName}:${b.covered}`).join('|')}:${criticalTopUps.map((u) => `${u.providerUuid}:${u.amount}:${u.providerName}`).join('|')}:${runwayCritical.map((r) => `${r.providerUuid}:${r.daysLeft}:${r.balance}`).join('|')}:${runwayWarning.map((r) => `${r.providerUuid}:${r.severity}:${r.daysLeft}`).join('|')}:${t('dashboard.critical.title')}`;
 
   const chargeCriticalAlert =
     critical.length > 0 ? (
@@ -309,7 +311,7 @@ export function DashboardAlerts({ overdue, upcoming, runway, topUps }: Dashboard
         <IconAlertTriangle className="size-4" />
         <AlertTitle>{t('dashboard.critical.title')}</AlertTitle>
         <AlertDescription className="mt-2 block w-full">
-          <AlertChargeGrid>
+          <AlertChargeGrid showBalance>
             {critical.map((b, index) => (
               <AlertChargeRow
                 key={b.serviceUuid}
@@ -320,14 +322,24 @@ export function DashboardAlerts({ overdue, upcoming, runway, topUps }: Dashboard
                     <ProviderBadge
                       name={b.providerName}
                       kind={b.providerKind}
+                      uuid={b.providerUuid}
                       faviconLink={b.providerFaviconLink}
                       loginUrl={b.providerLoginUrl}
                       iconName={b.providerIconName}
                       iconBg={b.providerIconBg}
                     />
-                    <ServiceBadge countryCode={b.countryCode} name={b.name} />
+                    <ServiceBadge
+                      name={b.name}
+                      uuid={b.serviceUuid}
+                      type={b.type}
+                      countryCode={b.countryCode}
+                      marker={b.marker}
+                      markerBg={b.markerBg}
+                      vendor={b.vendor}
+                    />
                   </>
                 }
+                balance={<CoverageBadge covered={b.covered} />}
                 badge={
                   <Badge className={cn('capitalize', severityBadgeClass(b.severity))}>
                     {dayLabel(t, b.daysUntil)}
@@ -366,6 +378,7 @@ export function DashboardAlerts({ overdue, upcoming, runway, topUps }: Dashboard
                       <ProviderBadge
                         name={u.providerName}
                         kind={u.providerKind || fromCritical?.providerKind}
+                        uuid={u.providerUuid}
                         faviconLink={u.providerFaviconLink ?? fromCritical?.providerFaviconLink}
                         loginUrl={u.providerLoginUrl ?? fromCritical?.providerLoginUrl}
                         iconName={u.providerIconName ?? fromCritical?.providerIconName}
@@ -438,12 +451,21 @@ export function DashboardAlerts({ overdue, upcoming, runway, topUps }: Dashboard
                       <ProviderBadge
                         name={b.providerName}
                         kind={b.providerKind}
+                        uuid={b.providerUuid}
                         faviconLink={b.providerFaviconLink}
                         loginUrl={b.providerLoginUrl}
                         iconName={b.providerIconName}
                         iconBg={b.providerIconBg}
                       />
-                      <ServiceBadge countryCode={b.countryCode} name={b.name} />
+                      <ServiceBadge
+                        name={b.name}
+                        uuid={b.serviceUuid}
+                        type={b.type}
+                        countryCode={b.countryCode}
+                        marker={b.marker}
+                        markerBg={b.markerBg}
+                        vendor={b.vendor}
+                      />
                     </>
                   }
                   badge={

@@ -15,9 +15,11 @@ import {
 import { useRates } from '@/api/rates';
 import { useSettings } from '@/api/settings';
 import { PageHeader } from '@/components/PageHeader';
+import { ResetViewButton } from '@/components/ResetViewButton';
 import { Button } from '@/components/ui/button';
 import { useEnums } from '@/constants';
 import { useDisclosure } from '@/hooks/useDisclosure';
+import { useSelectedParam } from '@/hooks/useSelectedParam';
 import { sortRows, useTableSort } from '@/hooks/useTableSort';
 import { formatDate } from '@/utils/format';
 import { buildRubMap } from '@/utils/money';
@@ -51,7 +53,7 @@ export function ProvidersPage() {
   const selected = providers?.find((p) => p.uuid === detailUuid) ?? null;
   const [createOpened, { open: openCreateModal, close: closeCreateModal }] = useDisclosure(false);
 
-  const { sort, toggleSort } = useTableSort('providers-sort', PROVIDER_SORT_KEYS);
+  const { sort, toggleSort, resetSort } = useTableSort('providers-sort', PROVIDER_SORT_KEYS);
   const sorted = sortRows(
     providers,
     sort,
@@ -80,9 +82,11 @@ export function ProvidersPage() {
       projectName: p.projectName ?? '',
       panelId: p.panelId ?? '',
       isPostpaid: p.isPostpaid,
+      useCatalogNames: p.useCatalogNames !== false,
     });
     setDetailUuid(p.uuid);
   };
+  useSelectedParam(providers, openDetail);
 
   const doSync = async (uuid: string) => {
     try {
@@ -92,6 +96,23 @@ export function ProvidersPage() {
       else notifyError((run.error ?? '').slice(0, 200) || t('providers.syncFailed'));
     } catch (e) {
       notifyError(apiErrorMessage(e));
+    }
+  };
+
+  // Instant on/off from the detail modal footer. The form deliberately does not carry
+  // isEnabled, so a later Save can't revert it.
+  const [togglingUuid, setTogglingUuid] = useState<string | null>(null);
+  const toggleEnabled = async (p: Provider) => {
+    setTogglingUuid(p.uuid);
+    try {
+      await update.mutateAsync({ uuid: p.uuid, dto: { isEnabled: !p.isEnabled } });
+      notifySuccess(
+        t(p.isEnabled ? 'providers.disabledToast' : 'providers.enabledToast', { name: p.name }),
+      );
+    } catch (e) {
+      notifyError(apiErrorMessage(e));
+    } finally {
+      setTogglingUuid(null);
     }
   };
 
@@ -132,8 +153,9 @@ export function ProvidersPage() {
         closeCreateModal();
       }
       notifySuccess(selected ? t('providers.updated') : t('providers.created'));
-      // Auto-sync syncable providers so credential/token changes take effect right away.
-      if (saved.kind !== 'manual') void doSync(saved.uuid);
+      // Auto-sync syncable providers so credential/token changes take effect right away
+      // (not a switched-off one: its sync endpoint answers 400).
+      if (saved.kind !== 'manual' && saved.isEnabled) void doSync(saved.uuid);
     } catch (e) {
       notifyError(apiErrorMessage(e));
     }
@@ -168,6 +190,7 @@ export function ProvidersPage() {
           subtitle={t('providers.subtitle')}
           actions={
             <>
+              {sort && <ResetViewButton onClick={resetSort} />}
               <Button variant="outline" disabled={syncAll.isPending} onClick={doSyncAll}>
                 {syncAll.isPending ? (
                   <IconLoader2 className="size-4 animate-spin" />
@@ -198,6 +221,7 @@ export function ProvidersPage() {
         sort={sort}
         onToggleSort={toggleSort}
         onRowClick={openDetail}
+        onSync={doSync}
       />
 
       <ProviderFormModal
@@ -216,8 +240,10 @@ export function ProvidersPage() {
         kindLabel={enums.providerKindLabel}
         isSaving={update.isPending}
         isSyncing={sync.isPending && sync.variables === selected?.uuid}
+        isToggling={togglingUuid !== null && togglingUuid === selected?.uuid}
         onSubmit={submit}
         onSync={doSync}
+        onToggleEnabled={toggleEnabled}
         onDelete={doDelete}
         onClose={() => setDetailUuid(null)}
       />

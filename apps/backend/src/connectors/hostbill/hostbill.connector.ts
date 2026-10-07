@@ -2,6 +2,7 @@ import axios, { type AxiosInstance } from 'axios';
 import Decimal from 'decimal.js';
 import { normalizeCurrency } from '../common/currency';
 import { REQUEST_TIMEOUT_MS } from '../common/http';
+import { totpCode } from '../common/totp';
 import { Account, Connector, PaymentData, ServiceData } from '../connector.interface';
 import {
   HOSTBILL_FALLBACK_CURRENCY,
@@ -17,17 +18,30 @@ import {
   ServicesResponse,
 } from './hostbill.types';
 
+const TWO_FACTOR_MESSAGE =
+  'HostBill: authenticator-app (TOTP) 2FA is enabled but no TOTP secret is set. Add the base32 ' +
+  'TOTP secret in the provider settings so the sync can generate the one-time code itself.';
+
+const TOTP_FAILED_MESSAGE =
+  'HostBill: the 2FA code was rejected — check the TOTP secret and the server clock.';
+
 /**
  * HostBill User API connector (https://hostbill.atlassian.net/wiki/...). Each install
  * lives on its own domain and the API base path varies (e.g. /api), so the base URL is
  * configured per provider. Auth: JWT, POST /login (username=email + password) → token,
- * then Bearer on each request (Basic auth isn't enabled on all installs). No npm SDK.
- * Balance: GET /balance (acc_credit). Services: GET /service. Billing is per-cycle.
+ * then Bearer on each request. Some installs have a broken JWT issuer but working Basic
+ * auth (e.g. Clouvider answers /login with internal_error_0); on any login failure other
+ * than bad credentials we probe /details with Basic and switch to it. No npm SDK.
+ * 2FA: on installs with the MFA verify routes (User API, 2026-08+) /login returns token=null
+ * plus an mfa challenge; for authenticator-app (TOTP) 2FA we solve it via POST /mfa/verify with
+ * a generated code (needs the base32 secret). Balance: GET /balance (acc_credit). Services:
+ * GET /service. Billing is per-cycle.
  */
 export class HostbillConnector implements Connector {
   private readonly http: AxiosInstance;
   private readonly creds: HostbillCredentials;
   private token: string | null = null;
+  private useBasic = false;
 
   constructor(creds: HostbillCredentials) {
     this.creds = creds;
@@ -41,8 +55,9 @@ export class HostbillConnector implements Connector {
     return 'hostbill';
   }
 
-  /** Obtain (and cache) a JWT via POST /login, returning the Bearer auth header. */
+  /** Auth header for requests: cached JWT via POST /login, or Basic once fallen back. */
   private async authHeaders(signal: AbortSignal): Promise<Record<string, string>> {
+    if (this.useBasic) return this.basicHeader();
     if (!this.token) {
       const { data } = await this.http.post<LoginResponse>(
         'login',
@@ -51,14 +66,75 @@ export class HostbillConnector implements Connector {
       );
       // HostBill returns 200 with { error: [...] } on bad credentials.
       if (data?.error) {
-        throw new Error(
-          `HostBill: ${Array.isArray(data.error) ? data.error.join(', ') : String(data.error)}`,
-        );
+        const errors = Array.isArray(data.error) ? data.error : [data.error];
+        const loginError = new Error(`HostBill: ${errors.join(', ')}`);
+        // wronglogin = bad credentials, Basic would fail the same way.
+        if (errors.includes('wronglogin')) throw loginError;
+        return this.basicFallback(signal, loginError);
       }
       this.token = data?.token ?? data?.access_token ?? null;
-      if (!this.token) throw new Error('HostBill login: token was not obtained');
+      // 2FA-enabled account: /login leaves token null and returns an mfa challenge — solve it
+      // with a generated TOTP code (only installs updated to the User API MFA routes reach here;
+      // older ones never send an mfa object and fall through to the basicFallback below).
+      if (!this.token && data?.mfa) {
+        this.token = await this.solveMfa(data.mfa, signal);
+      }
+      if (!this.token) {
+        return this.basicFallback(signal, new Error('HostBill login: token was not obtained'));
+      }
     }
     return { Authorization: `Bearer ${this.token}` };
+  }
+
+  /**
+   * Solve the /login MFA challenge for a 2FA-enabled account: submit a generated TOTP code to
+   * POST /mfa/verify (authorized by the short-lived mfa token as Bearer) and return the real JWT.
+   * Only authenticator-app (TOTP) 2FA can be automated — SMS/email methods need a delivered code.
+   */
+  private async solveMfa(
+    mfa: NonNullable<LoginResponse['mfa']>,
+    signal: AbortSignal,
+  ): Promise<string> {
+    const methods = mfa.methods ?? [];
+    if (!methods.includes('google_authenticator')) {
+      throw new Error(
+        `HostBill: 2FA method ${methods.join(', ') || 'unknown'} cannot be automated — ` +
+          'switch the account to an authenticator app (TOTP) or disable 2FA.',
+      );
+    }
+    if (!this.creds.totpSecret) throw new Error(TWO_FACTOR_MESSAGE);
+    if (!mfa.token) throw new Error(TOTP_FAILED_MESSAGE);
+    const { data } = await this.http.post<LoginResponse>(
+      'mfa/verify',
+      {
+        method: 'google_authenticator',
+        payload: { code: totpCode(this.creds.totpSecret, Date.now()) },
+      },
+      { headers: { Authorization: `Bearer ${mfa.token}` }, signal },
+    );
+    const token = data?.token ?? data?.access_token ?? null;
+    if (!token) throw new Error(TOTP_FAILED_MESSAGE);
+    return token;
+  }
+
+  /** Probe /details with Basic auth; on success switch to it, otherwise surface the login error. */
+  private async basicFallback(
+    signal: AbortSignal,
+    loginError: Error,
+  ): Promise<Record<string, string>> {
+    const headers = this.basicHeader();
+    try {
+      await this.http.get('details', { headers, signal });
+    } catch {
+      throw loginError;
+    }
+    this.useBasic = true;
+    return headers;
+  }
+
+  private basicHeader(): Record<string, string> {
+    const encoded = Buffer.from(`${this.creds.username}:${this.creds.password}`).toString('base64');
+    return { Authorization: `Basic ${encoded}` };
   }
 
   async fetchAccount(signal: AbortSignal): Promise<Account> {

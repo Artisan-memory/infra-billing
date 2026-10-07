@@ -7,8 +7,10 @@ import { PaymentsRepository } from '@repositories/payments/payments.repository';
 import { ProjectsRepository } from '@repositories/projects/projects.repository';
 import { ProvidersRepository } from '@repositories/providers/providers.repository';
 import { ServicesRepository } from '@repositories/services/services.repository';
+import { SettingsRepository } from '@repositories/settings/settings.repository';
 import { CurrencyService } from '../currency/currency.service';
-import { monthlyCost } from '@common/money';
+import { chargeSeverity } from '@common/billing-severity';
+import { isMeteredPeriod, monthlyCost } from '@common/money';
 import { overdueDays } from '@common/overdue';
 import { burnFromMonthlyCost, burnFromSnapshots, daysOfRunway } from '@common/runway';
 
@@ -19,6 +21,30 @@ interface Agg {
   count: number;
 }
 
+function metaString(meta: unknown, key: string): string | null {
+  if (!meta || typeof meta !== 'object') return null;
+  const v = (meta as Record<string, unknown>)[key];
+  return typeof v === 'string' && v.trim() ? v.trim() : null;
+}
+
+function serviceBadgeFields(s: { type: string; countryCode: string | null; meta: unknown }) {
+  return {
+    type: s.type,
+    countryCode: s.countryCode ?? null,
+    marker: metaString(s.meta, 'marker'),
+    markerBg: metaString(s.meta, 'markerBg'),
+    vendor: metaString(s.meta, 'vendor') ?? metaString(s.meta, 'model'),
+  };
+}
+
+interface TariffService {
+  providerUuid: string;
+  cost: { toString(): string };
+  currency: string;
+  period: string;
+  createdAt: Date;
+}
+
 @Injectable()
 export class AnalyticsService {
   constructor(
@@ -27,6 +53,7 @@ export class AnalyticsService {
     private readonly servicesRepo: ServicesRepository,
     private readonly paymentsRepo: PaymentsRepository,
     private readonly snapshotsRepo: BalanceSnapshotsRepository,
+    private readonly settingsRepo: SettingsRepository,
     private readonly currency: CurrencyService,
   ) {}
 
@@ -100,12 +127,17 @@ export class AnalyticsService {
 
     const horizon = now.add(14, 'day');
     const today = now.startOf('day');
-    // Services billing within 14 days, sorted soonest-first.
+    // Services billing today or within 14 days, sorted soonest-first. The lower bound is "not
+    // overdue" by calendar day (see overdueDays): a charge dated today is upcoming with daysUntil 0
+    // because the day is still ahead and can still be paid. Metered (daily/hourly) services are
+    // skipped: their "next billing" is just the paid-until date sliding forward every day, not a
+    // charge to prepare for — otherwise every such service would be "upcoming" every single day.
     const upcomingSorted = services
       .filter(
         (s) =>
           s.nextBillingAt &&
-          dayjs(s.nextBillingAt).isAfter(now) &&
+          !isMeteredPeriod(s.period as Period) &&
+          overdueDays(s.nextBillingAt, now) == null &&
           dayjs(s.nextBillingAt).isBefore(horizon),
       )
       .map((s) => ({
@@ -162,10 +194,7 @@ export class AnalyticsService {
         }
       }
       const daysUntil = Math.max(0, date.startOf('day').diff(today, 'day'));
-      let severity: 'critical' | 'warning' | 'ok';
-      if (covered === false && daysUntil <= 7) severity = 'critical';
-      else if (covered === false || daysUntil <= 3) severity = 'warning';
-      else severity = 'ok';
+      const severity = chargeSeverity(covered, daysUntil, provider?.isPostpaid ?? false);
       return {
         serviceUuid: s.uuid,
         name: s.name,
@@ -176,7 +205,7 @@ export class AnalyticsService {
         providerFaviconLink: provider?.faviconLink ?? null,
         providerIconName: provider?.iconName ?? null,
         providerIconBg: provider?.iconBg ?? null,
-        countryCode: s.countryCode ?? null,
+        ...serviceBadgeFields(s),
         nextBillingAt: s.nextBillingAt!.toISOString(),
         cost: new Decimal(s.cost.toString()).toFixed(2),
         currency: s.currency,
@@ -190,7 +219,8 @@ export class AnalyticsService {
     });
 
     // Top-up = shortfall after simulating upcoming charges. Only for providers that already have
-    // a critical (uncovered + due within a week) line — matches the dashboard critical banner.
+    // a critical line — matches the dashboard critical banner. Unknown-coverage criticals carry
+    // no native balance, so the null guard below keeps them out of top-up suggestions.
     const criticalProviderUuids = new Set(
       upcomingBillings.filter((b) => b.severity === 'critical').map((b) => b.providerUuid),
     );
@@ -213,22 +243,27 @@ export class AnalyticsService {
     }
     balanceTopUps.sort((a, b) => new Decimal(b.amount).cmp(new Decimal(a.amount)));
 
-    // Dated charges already in the past: pay-or-fix reminders, most overdue first.
+    // Dated charges whose billing day is already behind us (yesterday or earlier): pay-or-fix
+    // reminders, most overdue first. Metered services can't be overdue — the paid-until date
+    // passing at night merely means the next sync hasn't refreshed it yet, and a real shortfall
+    // surfaces as the provider's runway.
     const overdueBillings: AnalyticsSummary['overdueBillings'] = [];
     for (const s of services) {
+      if (isMeteredPeriod(s.period as Period)) continue;
       const daysOverdue = overdueDays(s.nextBillingAt, now);
       if (daysOverdue == null) continue;
       const provider = providerByUuid.get(s.providerUuid);
       overdueBillings.push({
         serviceUuid: s.uuid,
         name: s.name,
+        providerUuid: s.providerUuid,
         providerName: providerName.get(s.providerUuid) ?? '',
         providerKind: provider?.kind ?? 'manual',
         providerLoginUrl: provider?.loginUrl ?? null,
         providerFaviconLink: provider?.faviconLink ?? null,
         providerIconName: provider?.iconName ?? null,
         providerIconBg: provider?.iconBg ?? null,
-        countryCode: s.countryCode ?? null,
+        ...serviceBadgeFields(s),
         nextBillingAt: s.nextBillingAt!.toISOString(),
         cost: new Decimal(s.cost.toString()).toFixed(2),
         currency: s.currency,
@@ -244,8 +279,13 @@ export class AnalyticsService {
     // Estimate days-left from snapshot decline (fallback: monthly service cost), and reuse the
     // charge-coverage severity model. A provider with any dated service is governed by the dated
     // logic above (even if the date is beyond the upcoming window), so it's not a runway candidate.
+    // Metered services don't count as dated: their balance drain is exactly what runway measures.
+    // Known simplification: a provider mixing metered and monthly dated services stays on the
+    // dated path, and the metered drain is not folded into the running-balance coverage.
     const datedProviderUuids = new Set(
-      services.filter((s) => s.nextBillingAt != null).map((s) => s.providerUuid),
+      services
+        .filter((s) => s.nextBillingAt != null && !isMeteredPeriod(s.period as Period))
+        .map((s) => s.providerUuid),
     );
     const runwayWindowStart = now.subtract(30, 'day').toDate();
     const snapshots = await this.snapshotsRepo.listSince(runwayWindowStart);
@@ -421,6 +461,12 @@ export class AnalyticsService {
     const { baseCurrency } = await this.currency.getEffectiveSettings();
     const rates = await this.currency.getRubRates();
     const history = await this.currency.getHistoricalRates(rates);
+    const settings = await this.settingsRepo.ensure();
+    const backfill = settings.forecastTariffBackfill;
+    const respectCreatedAt = backfill && settings.forecastTariffBackfillRespectCreatedAt;
+    const backdateFromPayments =
+      respectCreatedAt && settings.forecastTariffBackfillBackdateFromPayments;
+    const force = backfill && settings.forecastTariffBackfillForce;
 
     const current = dayjs().startOf('month');
     const currentKey = current.format('YYYY-MM');
@@ -429,21 +475,35 @@ export class AnalyticsService {
 
     const monthsList: string[] = [];
     const actualBuckets = new Map<string, Decimal>();
+    const estimatedBuckets = new Map<string, Decimal>();
     const projBuckets = new Map<string, Decimal>();
     for (let i = 0; i < totalMonths; i += 1) {
       const key = windowStart.add(i, 'month').format('YYYY-MM');
       monthsList.push(key);
       actualBuckets.set(key, ZERO());
+      estimatedBuckets.set(key, ZERO());
       projBuckets.set(key, ZERO());
     }
 
     // Actuals: top-ups + manual payments, plus charges for consumption-only providers (no top-ups).
     // Same definition as currentMonthPayments/totalSpent in summary() — keeps "Actual" consistent
-    // with the KPI card.
-    const [payments, topupProviderUuids] = await Promise.all([
-      this.paymentsRepo.listSince(windowStart.toDate()),
-      this.paymentsRepo.providerUuidsWithTopups(),
-    ]);
+    // with the KPI card. Skipped entirely in force mode (tariff fill overwrites actual below).
+    const needTariffs = backfill || force;
+    const needBackdate = needTariffs && respectCreatedAt && backdateFromPayments;
+    const [payments, topupProviderUuids, activeServices, billedServices, earliestPayments] =
+      await Promise.all([
+        force
+          ? Promise.resolve([] as Awaited<ReturnType<PaymentsRepository['listSince']>>)
+          : this.paymentsRepo.listSince(windowStart.toDate()),
+        force ? Promise.resolve([] as string[]) : this.paymentsRepo.providerUuidsWithTopups(),
+        needTariffs
+          ? this.servicesRepo.listActive()
+          : Promise.resolve([] as Awaited<ReturnType<ServicesRepository['listActive']>>),
+        this.servicesRepo.listActiveBilled(),
+        needBackdate
+          ? this.paymentsRepo.earliestPaymentDateByProvider()
+          : Promise.resolve(new Map<string, Date>()),
+      ]);
     const providersWithTopups = new Set(topupProviderUuids);
     for (const p of payments) {
       if (p.type === 'charge' && providersWithTopups.has(p.providerUuid)) continue;
@@ -459,11 +519,34 @@ export class AnalyticsService {
       actualBuckets.set(key, actualBuckets.get(key)!.add(base));
     }
 
+    if (needTariffs) {
+      // Portfolio monthly cost (same basis as the Monthly expenses KPI) for every past month.
+      // Optional createdAt gate, optionally backdated to the provider's first payment.
+      const earliestPaymentMonth = new Map<string, string>();
+      for (const [providerUuid, date] of earliestPayments) {
+        earliestPaymentMonth.set(providerUuid, dayjs(date).format('YYYY-MM'));
+      }
+      for (const key of monthsList) {
+        if (key > currentKey) continue;
+        const amount = tariffForMonth(
+          activeServices,
+          key,
+          (amount, currency) => this.currency.convert(amount, currency, baseCurrency, rates),
+          {
+            respectCreatedAt,
+            backdateFromPayments,
+            earliestPaymentMonth,
+          },
+        );
+        estimatedBuckets.set(key, amount);
+        if (force) actualBuckets.set(key, amount);
+      }
+    }
+
     // Projection: recurring services billed strictly in the future (current month shows actuals only).
-    const services = await this.servicesRepo.listActiveBilled();
     const projStart = current.add(1, 'month');
     const projEnd = current.add(months + 1, 'month');
-    for (const s of services) {
+    for (const s of billedServices) {
       const charge = this.currency.convert(
         new Decimal(s.cost.toString()),
         s.currency,
@@ -496,6 +579,7 @@ export class AnalyticsService {
     return monthsList.map((m) => ({
       month: m,
       actual: actualBuckets.get(m)!.toFixed(2),
+      estimated: estimatedBuckets.get(m)!.toFixed(2),
       projected: projBuckets.get(m)!.toFixed(2),
     }));
   }
@@ -515,6 +599,34 @@ function bump(map: Map<string, Agg>, key: string, amount: Decimal): void {
   cur.monthly = cur.monthly.add(amount);
   cur.count += 1;
   map.set(key, cur);
+}
+
+/** Sum monthly-normalized tariffs of the current active services. */
+function tariffForMonth(
+  services: TariffService[],
+  monthKey: string,
+  toBase: (amount: Decimal, currency: string) => Decimal,
+  opts: {
+    respectCreatedAt: boolean;
+    backdateFromPayments: boolean;
+    earliestPaymentMonth: Map<string, string>;
+  },
+): Decimal {
+  let total = ZERO();
+  for (const s of services) {
+    if (opts.respectCreatedAt) {
+      let startKey = dayjs(s.createdAt).format('YYYY-MM');
+      if (opts.backdateFromPayments) {
+        const payKey = opts.earliestPaymentMonth.get(s.providerUuid);
+        if (payKey && payKey < startKey) startKey = payKey;
+      }
+      if (startKey > monthKey) continue;
+    }
+    total = total.add(
+      toBase(monthlyCost(new Decimal(s.cost.toString()), s.period as Period), s.currency),
+    );
+  }
+  return total;
 }
 
 function periodStep(period: string): { n: number; u: dayjs.ManipulateType } | null {
