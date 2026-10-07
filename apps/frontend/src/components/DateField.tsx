@@ -8,6 +8,7 @@ import { Calendar } from '@/components/ui/calendar';
 import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
+import { maskDateInput } from '@/utils/dateMask';
 
 // Strict parsing against a list of formats (dayjs(text, formats, true)) requires this plugin.
 dayjs.extend(customParseFormat);
@@ -93,8 +94,10 @@ export function DateField({
           placeholder={placeholder ?? DISPLAY_FORMAT}
           disabled={disabled}
           autoComplete="off"
+          inputMode="numeric"
+          maxLength={DISPLAY_FORMAT.length}
           className={cn('pr-9', showClear && 'pr-[3.75rem]')}
-          onChange={(e) => setText(e.target.value)}
+          onChange={(e) => setText(maskDateInput(e.target.value))}
           onFocus={() => {
             focusedRef.current = true;
           }}
